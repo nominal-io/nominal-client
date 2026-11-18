@@ -1,6 +1,6 @@
 ---
 name: reviewing-nominal-api-bumps
-description: Use when bumping nominal-api or nominal-api-protos (a "transport" version bump / dependency upgrade) and you need to know what changed in the generated bindings and what in nominal-client must change. Covers conjure (nominal-api) and proto (nominal-api-protos). Triggers on questions like "what changed between version X and Y", "is this bump safe", "breaking changes", migration impact.
+description: Use when bumping nominal-api, nominal-api-protos, or nominal-compute together. The binding scan covers Conjure and protobuf. Validate the compute extra with its SDK callers. Triggers on questions like "what changed between version X and Y", "is this bump safe", "breaking changes", migration impact.
 visibility: public
 category: dependency-migration
 tags:
@@ -29,7 +29,9 @@ the same content is also written as markdown.
 
 ## When to use
 
-- Bumping the `nominal-api` / `nominal-api-protos` pin in `pyproject.toml`.
+- Updating any of the three package pins in `pyproject.toml`. Check that all three publish the target
+  version before editing. Update both core pins and the platform-marked `compute` extra together,
+  then regenerate `uv.lock` with `uv lock`. If a release is missing, report which package blocks the bump.
 - Answering "what changed between 0.1282.0 and 0.1286.0?" or "is this bump safe to take?"
 - Deciding what migration work a dependency upgrade implies before doing it.
 
@@ -72,7 +74,10 @@ Then serve it: `python serve_report.py <out> --file <name>` binds `127.0.0.1` on
 ## Workflow
 
 1. **Run the scan.** Use `bump_scan.py <transport> --repo <client-root> --out <dir>`. Prefer a scratch/temp
-   `--out` dir so reports don't dirty the repo. For a full bump, run `both` (one combined HTML page).
+   `--out` dir so reports don't dirty the repo. For a full bump, run `both` with explicit old and target versions
+   (one combined HTML page). Validate `nominal-compute` separately by running the compute integration
+   tests with the extra installed on a supported platform, e.g.
+   `uv run --extra compute pytest tests/experimental/test_checklist_source.py`.
 2. **Serve it.** Launch `serve_report.py <out> --file <name>` **in the background** (it runs until killed)
    and give the user the printed `http://localhost:<port>/…` URL — this is the default way to view the
    report. `bump_scan.py` prints the exact command. (The HTML is self-contained, so `file://` works too.)

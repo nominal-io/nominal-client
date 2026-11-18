@@ -42,7 +42,7 @@ not optional background. Read only relevant routes; changes can need more than o
 | Expose or deprecate an API, compose operations, or change public behavior, results, conversion, or failure semantics | [SDK contracts](.agents/conventions/sdk.md), relevant callers and neighboring wrappers |
 | Add/change nontrivial behavior, fix a regression, or author/review/prune tests | [Test policy](.agents/conventions/testing.md), existing coverage for the affected contract |
 | Change public docstrings, examples, or documentation rendering | [Documentation policy](.agents/conventions/documentation.md), [site setup](docs/AGENTS.md), [renderer configuration](docs/conf.py), `nominal-docs` skill |
-| Upgrade `nominal-api` or `nominal-api-protos` | [API upgrade skill](.agents/skills/reviewing-nominal-api-bumps/SKILL.md), plus affected contracts above |
+| Upgrade `nominal-api`, `nominal-api-protos`, or `nominal-compute` | Pin all three to the same published version in one change. Follow the [API upgrade skill](.agents/skills/reviewing-nominal-api-bumps/SKILL.md) and affected contracts above. |
 | Review or simplify structure | [Structural review skill](.agents/skills/thermo-nuclear-code-quality-review/SKILL.md), plus affected contracts above |
 | Change AI instructions, review automation, or shared skills | [Guidance ownership](.agents/conventions/README.md) |
 | Prepare or update a PR | [PR template](.github/pull_request_template.md), [contributor guidance](CONTRIBUTING.md#preparing-a-pull-request) |
@@ -78,8 +78,7 @@ build commands here. The root package is `nominal`; extension distributions live
    GitHub comments or changing PR state.
 
 Skills live in `.agents/skills/`; `.claude/skills/` exposes the same files to Claude.
-Use `reviewing-nominal-api-bumps` when changing `nominal-api` or `nominal-api-protos`, and
-`thermo-nuclear-code-quality-review` for deep structural review. If skill invocation is not
+Use `thermo-nuclear-code-quality-review` for deep structural review. If skill invocation is not
 available in the current tool, read the relevant `SKILL.md` directly.
 
 Nominal's shared writing rules for docs and docstrings come from the `nominal-docs` skill in
