@@ -190,7 +190,7 @@ def _complete_multipart_upload(
 
 
 def _iter_chunks(f: BinaryIO, chunk_size: int) -> Iterable[bytes]:
-    # An empty object still needs one part for multipart completion.
+    # Multipart completion requires a first part even when the stream is empty.
     yield f.read(chunk_size)
     while (data := f.read(chunk_size)) != b"":
         yield data
@@ -215,7 +215,7 @@ def put_multipart_upload(
     Args:
         auth_header: Nominal authorization token
         workspace_rid: Nominal workspace rid
-        f: Binary IO to upload
+        f: Binary stream to upload. An empty stream creates a zero-byte object.
         filename: filename to use when uploading; sent literally as the object name
         mimetype: Type of data contained within binary stream
         upload_client: Conjure upload client
@@ -258,6 +258,9 @@ def _put_multipart_upload_to(
     Every follow-up request passes back the ``bucket`` handle initiate returned, which is how
     the server finds an upload outside the default destination.
     """
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+
     # muiltithreaded multipart upload:
     # - create a worker thread pool and a queue for all threads to share
     # - initialize the upload, getting the object key and upload id
@@ -317,9 +320,6 @@ def _put_multipart_upload_to(
     except Exception as e:
         _abort(upload_client, auth_header, key, upload_id, e, bucket)
         raise e
-    finally:
-        pool.shutdown(wait=True, cancel_futures=True)
-        session.close()
 
 
 def upload_multipart_io(
@@ -338,7 +338,7 @@ def upload_multipart_io(
     Args:
         auth_header: Nominal authorization token
         workspace_rid: Nominal workspace rid
-        f: Binary IO to upload
+        f: Binary stream to upload. An empty stream creates a zero-byte object.
         name: Upload filename. Existing extensions are preserved; only names without one use the default.
             Sent literally (no URL-encoding); unsafe storage characters raise ValueError.
         file_type: MIME type and default extension to use when the filename has none.
