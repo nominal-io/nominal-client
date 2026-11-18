@@ -656,7 +656,7 @@ def test_write_files_replaces_existing_files_and_creates_new_ones(uploads) -> No
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
     clients.drive_files.ListFiles.return_value = _listing(
-        _file(f"{_FOLDER}/SKILL.md", "rev-entry"), _file(f"{_FOLDER}/methods/a.md", "rev-a")
+        _entry("rev-entry"), _file(f"{_FOLDER}/methods/a.md", "rev-a")
     )
     clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_saved(f"{_FOLDER}/methods/a.md", "rev-a2"), _saved(f"{_FOLDER}/methods/b.md", "rev-b")]
@@ -674,7 +674,9 @@ def test_write_files_reports_a_file_changed_meanwhile(uploads) -> None:
     """A file another save changed raises a conflict, and none of the files are saved."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a"))
+    clients.drive_files.ListFiles.return_value = _listing(
+        _entry("rev-entry"), _file(f"{_FOLDER}/methods/a.md", "rev-a")
+    )
     clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_refused(files_pb2.FILE_CHANGE_ERROR_REVISION_PRECONDITION_FAILED), _BATCH_FAILURE]
     )
@@ -687,7 +689,9 @@ def test_remove_files_refuses_a_missing_path_before_removing() -> None:
     """Removing a path the folder doesn't have raises before any file is removed."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a"))
+    clients.drive_files.ListFiles.return_value = _listing(
+        _entry("rev-entry"), _file(f"{_FOLDER}/methods/a.md", "rev-a")
+    )
 
     with pytest.raises(NominalNotFoundError, match="methods/b.md"):
         skill.remove_files(["methods/a.md", "methods/b.md"])
@@ -699,7 +703,9 @@ def test_remove_files_removes_each_file_at_its_current_revision() -> None:
     """Each file is removed by its current revision, so a file changed since is left alone."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/methods/a.md", "rev-a"))
+    clients.drive_files.ListFiles.return_value = _listing(
+        _entry("rev-entry"), _file(f"{_FOLDER}/methods/a.md", "rev-a")
+    )
     clients.drive_files.ApplyFileChanges.return_value = files_pb2.ApplyFileChangesResponse(
         results=[_saved(f"{_FOLDER}/methods/a.md", "rev-a2")]
     )
@@ -716,7 +722,7 @@ def test_list_files_follows_pages_and_gives_paths_inside_the_folder() -> None:
     skill = Skill._from_proto(clients, _proto_skill())
     clients.drive_files.ListFiles.side_effect = [
         _listing(_file(f"{_FOLDER}/methods/a.md", "r2", 9), next_page_token="next"),
-        _listing(_file(f"{_FOLDER}/SKILL.md", "r1", 120)),
+        _listing(_entry("r1", size_bytes=120)),
     ]
 
     files = skill.list_files()
@@ -784,9 +790,7 @@ def test_export_writes_every_file_under_the_skill_name(downloads, tmp_path: Path
     """Export writes the current files, SKILL.md included, into a folder named after the skill."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.drive_files.ListFiles.return_value = _listing(
-        _file(f"{_FOLDER}/SKILL.md", "rev-entry"), _file(f"{_FOLDER}/m/a.md", "rev-a")
-    )
+    clients.drive_files.ListFiles.return_value = _listing(_entry("rev-entry"), _file(f"{_FOLDER}/m/a.md", "rev-a"))
     downloads.update({"https://storage/rev-entry": _SKILL_MD.encode(), "https://storage/rev-a": b"Method A.\r\n"})
 
     folder = skill.export(tmp_path)
@@ -802,7 +806,9 @@ def test_export_refuses_a_path_that_could_leave_the_folder(downloads, tmp_path: 
     """File Store accepts backslashes, which Windows reads as separators, so export writes nothing for such a path."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/..\\..\\evil.md", "rev-x"))
+    clients.drive_files.ListFiles.return_value = _listing(
+        _entry("rev-entry"), _file(f"{_FOLDER}/..\\..\\evil.md", "rev-x")
+    )
 
     with pytest.raises(ValueError):
         skill.export(tmp_path)
@@ -833,9 +839,11 @@ def test_export_refuses_two_files_that_land_on_one(downloads, tmp_path: Path) ->
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
     clients.drive_files.ListFiles.return_value = _listing(
-        _file(f"{_FOLDER}/Notes.md", "rev-a"), _file(f"{_FOLDER}/notes.md", "rev-b")
+        _entry("rev-entry"), _file(f"{_FOLDER}/Notes.md", "rev-a"), _file(f"{_FOLDER}/notes.md", "rev-b")
     )
-    downloads.update({"https://storage/rev-a": b"A", "https://storage/rev-b": b"B"})
+    downloads.update(
+        {"https://storage/rev-entry": b"entry", "https://storage/rev-a": b"A", "https://storage/rev-b": b"B"}
+    )
 
     with pytest.raises(FileExistsError):
         skill.export(tmp_path / "out")
@@ -846,7 +854,7 @@ def test_export_on_windows_refuses_a_drive_or_a_stream(downloads, tmp_path: Path
     """Windows reads a colon as a drive or a file's hidden stream, so export writes nothing for such a path there."""
     clients = _skill_clients()
     skill = Skill._from_proto(clients, _proto_skill())
-    clients.drive_files.ListFiles.return_value = _listing(_file(f"{_FOLDER}/{path}", "rev-x"))
+    clients.drive_files.ListFiles.return_value = _listing(_entry("rev-entry"), _file(f"{_FOLDER}/{path}", "rev-x"))
     monkeypatch.setattr("nominal.experimental.analyst._skill._ON_WINDOWS", True)
 
     with pytest.raises(ValueError):
@@ -1031,3 +1039,53 @@ def test_read_closes_download_session(monkeypatch, content) -> None:
         with pytest.raises(NominalError, match="Not UTF-8"):
             skill.get_content()
     session.close.assert_called_once_with()
+
+
+def test_remove_refuses_reused_folder() -> None:
+    """A replacement SKILL.md cannot grant an old skill ownership of the replacement files."""
+    clients = _skill_clients()
+    skill = Skill._from_proto(clients, _proto_skill())
+    clients.drive_files.ListFiles.return_value = _listing(
+        _file(f"{_FOLDER}/SKILL.md", "replacement"), _file(f"{_FOLDER}/notes.md", "notes")
+    )
+    with pytest.raises(NominalNotFoundError):
+        skill.remove_files(["notes.md"])
+    clients.drive_files.ApplyFileChanges.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        _SKILL_MD + "é" * 32768,
+        _SKILL_MD.replace("license: MIT", "license: []"),
+        _SKILL_MD.replace("description:", "allowed-tools: []\ndescription:"),
+        _SKILL_MD.replace("description:", "metadata: {author: [a]}\ndescription:"),
+        _SKILL_MD.replace("description:", "compatibility: ''\ndescription:"),
+    ],
+    ids=["size", "license", "allowed-tools", "metadata", "compatibility"],
+)
+def test_invalid_enabled_content_is_never_uploaded(uploads, content) -> None:
+    """An inadmissible replacement leaves a working skill's entry intact."""
+    clients = _skill_clients()
+    skill = Skill._from_proto(clients, _proto_skill())
+    with pytest.raises(ValueError):
+        skill.update(content=content)
+    assert not uploads
+    clients.drive_files.ApplyFileChanges.assert_not_called()
+
+
+def test_lost_enable_reply_retains_skill_rid(uploads, fake_rpc_error) -> None:
+    """Callers can look up the registered skill when its enable response is lost."""
+    client, clients = _client()
+
+    def commit_then_lose_reply(request):
+        clients.skills.GetSkill.return_value = skills_pb2.GetSkillResponse(
+            skill=_proto_skill(state=request.skill.state, version=request.expected_version + 1)
+        )
+        raise fake_rpc_error(grpc.StatusCode.UNAVAILABLE)
+
+    clients.skills.UpdateSkill.side_effect = commit_then_lose_reply
+    with pytest.raises(NominalError) as error:
+        analyst.create_skill(client, _SKILL_MD)
+    assert any(_RID in note and "get_skill" in note for note in error.value.__notes__)
+    assert analyst.get_skill(client, _RID).is_enabled

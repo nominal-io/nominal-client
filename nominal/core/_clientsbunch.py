@@ -303,9 +303,11 @@ class ClientsBunch:
             user_agent=agent,
             auth_header=f"Bearer {token}",
             header_provider=header_provider,
-            # A lost ApplyFileChanges response is ambiguous: replay can report revision/path
-            # failures for changes already applied, hiding the original outcome.
-            no_retry_methods=(("nominal.file_store.v1.FilesService", "ApplyFileChanges"),),
+            # Replaying a committed write after a lost reply can turn success into a stale-revision error.
+            no_retry_methods=(
+                ("nominal.file_store.v1.FilesService", "ApplyFileChanges"),
+                ("nominal.skills.v1.SkillsService", "UpdateSkill"),
+            ),
         )
 
         def grpc_factory(stub_class: GRPCStub[TStub]) -> TStub:

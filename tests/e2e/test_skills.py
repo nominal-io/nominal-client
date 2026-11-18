@@ -40,3 +40,14 @@ def test_skill_folder_round_trip(client: NominalClient, archive, tmp_path: Path)
     folder = skill.export(tmp_path)
     assert folder.name == renamed
     assert (folder / "methods" / "a.md").read_text() == "Method A, revised\n"
+
+
+def test_enabled_skill_lifecycle(client: NominalClient, archive) -> None:
+    """A newly enabled skill loads and can be disabled before teardown archives it."""
+    name = f"sdk-e2e-{uuid4().hex[:8]}"
+    skill = analyst.create_skill(client, _skill_md(name, "Check an SDK test skill."))
+    archive(skill)
+    assert skill.is_enabled
+    assert skill.get_load_status() is SkillLoadStatus.AVAILABLE
+    skill.update(enabled=False)
+    assert not analyst.get_skill(client, skill.rid).is_enabled

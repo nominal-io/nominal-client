@@ -6,7 +6,10 @@ from pathlib import Path
 from nominal.core import ArchiveStatusFilter, NominalClient, Workspace
 from nominal.core._types import PathLike
 from nominal.core._utils.api_tools import rid_from_instance_or_string
-from nominal.experimental.analyst._skill import Skill, _create_skill, _get_skill, _import_skill, _iter_search_skills
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core._utils.pagination_tools import DEFAULT_PAGE_SIZE, paginate_grpc
+from nominal.experimental.analyst._skill import _ENTRY_FILE, Skill, _create_skill, _read_skill_folder
+from nominal.protos.skills.v1 import skills_pb2
 
 
 def create_skill(
@@ -25,8 +28,8 @@ def create_skill(
 
     If the skills service refuses the skill, the files this call saved are removed; if they can't be removed,
     the error's notes say where they are. After a timeout or outage the registration outcome may be unknown,
-    so the files stay and the error's notes say so. If the skill can't be turned on, it stays as a draft
-    and the error's notes give its RID.
+    so the files stay and the error's notes say so. If enabling the skill fails, the error's notes give its RID.
+    Call `get_skill` to check its current state before retrying.
 
     Args:
         client: Authenticated Nominal client.
@@ -39,7 +42,8 @@ def create_skill(
     Raises:
         ValueError: If SKILL.md has no frontmatter with a valid name, `enabled` is True and SKILL.md has no
             description of 1 to 1024 characters, a file's path is SKILL.md or leads outside the skill's folder,
-            or there are more than 99 reference files. Nothing is saved.
+            or there are more than 99 reference files. Enabled entries must fit in 64 KiB and
+            provide valid optional frontmatter fields. Nothing is saved.
         NominalPermissionDeniedError: If the user can't edit the workspace's configuration, which creating a
             skill needs. Nothing is saved.
         NominalAlreadyExistsError: If the workspace already has a skill with this name. Nothing is saved.
@@ -84,14 +88,9 @@ def import_skill(
             skill needs. Nothing is saved.
         NominalAlreadyExistsError: If the workspace already has a skill with this name. Nothing is saved.
     """
-    return _import_skill(
-        client._clients,
-        Path(path),
-        enabled=enabled,
-        workspace_rid=client._clients.resolve_default_workspace_rid()
-        if workspace is None
-        else rid_from_instance_or_string(workspace),
-    )
+    files = _read_skill_folder(Path(path))
+    content = files.pop(_ENTRY_FILE)
+    return create_skill(client, content, files=files, enabled=enabled, workspace=workspace)
 
 
 def get_skill(client: NominalClient, rid: str) -> Skill:
@@ -100,7 +99,9 @@ def get_skill(client: NominalClient, rid: str) -> Skill:
     Raises:
         NominalNotFoundError: If no skill with the given RID exists or it is not accessible to the user.
     """
-    return _get_skill(client._clients, rid)
+    with translate_grpc_errors():
+        response = client._clients.skills.GetSkill(skills_pb2.GetSkillRequest(skill_rid=rid))
+    return Skill._from_proto(client._clients, response.skill)
 
 
 def search_skills(
@@ -124,14 +125,42 @@ def search_skills(
     Returns:
         All skills matching all of the provided filters.
     """
-    return list(
-        _iter_search_skills(
-            client._clients,
-            search_text=search_text,
-            enabled=enabled,
-            archive_status=archive_status,
-            workspace_rid=client._clients.resolve_default_workspace_rid()
-            if workspace is None
-            else rid_from_instance_or_string(workspace),
-        )
+    workspace_rid = (
+        client._clients.resolve_default_workspace_rid() if workspace is None else rid_from_instance_or_string(workspace)
     )
+    states = _searched_states(enabled, archive_status)
+    # Empty states means all unarchived states to Scout.
+    if not states:
+        return []
+    search_filter = skills_pb2.SkillSearchFilter(text=search_text, states=states)
+
+    def factory(page_token: str | None) -> skills_pb2.SearchSkillsRequest:
+        return skills_pb2.SearchSkillsRequest(
+            workspace_rid=workspace_rid,
+            filter=search_filter,
+            sort=skills_pb2.SKILL_LIBRARY_SORT_NAME_ASC,
+            page_size=DEFAULT_PAGE_SIZE,
+            page_token=page_token,
+        )
+
+    return [
+        Skill._from_proto(client._clients, skill)
+        for page in paginate_grpc(client._clients.skills.SearchSkills, request_factory=factory)
+        for skill in page.skills
+    ]
+
+
+def _searched_states(
+    enabled: bool | None, archive_status: ArchiveStatusFilter
+) -> list[skills_pb2.SkillState.ValueType]:
+    unarchived = [skills_pb2.SKILL_STATE_DRAFT, skills_pb2.SKILL_STATE_ENABLED, skills_pb2.SKILL_STATE_DISABLED]
+    match archive_status:
+        case ArchiveStatusFilter.NOT_ARCHIVED:
+            states = unarchived
+        case ArchiveStatusFilter.ARCHIVED:
+            states = [skills_pb2.SKILL_STATE_ARCHIVED]
+        case ArchiveStatusFilter.ANY:
+            states = [*unarchived, skills_pb2.SKILL_STATE_ARCHIVED]
+    if enabled is None:
+        return states
+    return [state for state in states if (state == skills_pb2.SKILL_STATE_ENABLED) == enabled]
