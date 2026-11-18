@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from functools import partial
 from uuid import uuid4
 
 import pytest
-from nominal_api import authorization
 
 from nominal.core import NominalClient
+from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.protos.authorization.apikeys.v1 import api_keys_pb2
 
 
 def with_temporary_api_key(client: NominalClient, request: pytest.FixtureRequest) -> NominalClient:
@@ -16,13 +16,18 @@ def with_temporary_api_key(client: NominalClient, request: pytest.FixtureRequest
     if not request.config.getoption("temporary_api_key"):
         return client
 
-    key = client._clients.authorization.create_api_key(
-        client._clients.auth_header,
-        authorization.CreateApiKeyRequest(api_key_name=f"e2e-{uuid4().hex}", expires_after_days=1),
-    )
-    request.addfinalizer(
-        partial(client._clients.authorization.revoke_api_key, client._clients.auth_header, key.api_key_metadata.rid)
-    )
+    with translate_grpc_errors():
+        key = client._clients.api_keys.CreateApiKey(
+            api_keys_pb2.CreateApiKeyRequest(
+                api_key=api_keys_pb2.ApiKey(display_name=f"e2e-{uuid4().hex}"), expires_after_days=1
+            )
+        )
+
+    def revoke_key() -> None:
+        with translate_grpc_errors():
+            client._clients.api_keys.DeleteApiKey(api_keys_pb2.DeleteApiKeyRequest(api_key_rid=key.api_key.rid))
+
+    request.addfinalizer(revoke_key)
 
     security = client._clients._service_config.security
     return NominalClient.from_token(
