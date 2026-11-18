@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.185.0](https://github.com/nominal-io/nominal-client/compare/v1.184.0...v1.185.0) (2026-11-18)
+
+
+### Features
+
+* find, read, create, import, edit, and export Analyst skills ([#1252](https://github.com/nominal-io/nominal-client/issues/1252)) ([9a26ecf](https://github.com/nominal-io/nominal-client/commit/9a26ecf08d717d843376d13b554b22f41b1dbee2))
+* migrate API-key operations to gRPC ([#1243](https://github.com/nominal-io/nominal-client/issues/1243)) ([71bed76](https://github.com/nominal-io/nominal-client/commit/71bed766689a490d926f14f6730c73635b83e438))
+* migrate Compute operations to gRPC ([#1247](https://github.com/nominal-io/nominal-client/issues/1247)) ([600bfbb](https://github.com/nominal-io/nominal-client/commit/600bfbbaf079f2238282fa70208b8f2408a489c9))
+
+
+### Bug Fixes
+
+* expose download range errors through NominalError ([#1320](https://github.com/nominal-io/nominal-client/issues/1320)) ([ebdaada](https://github.com/nominal-io/nominal-client/commit/ebdaada2f0bfd4c800cc92c5a7f43d12d4c5cc99))
+* support empty files in shared multipart uploads ([#1324](https://github.com/nominal-io/nominal-client/issues/1324)) ([e7bfa6b](https://github.com/nominal-io/nominal-client/commit/e7bfa6b399610cd239ab78e7fdaa4f0a52e82b31))
+
 ## [1.184.0](https://github.com/nominal-io/nominal-client/compare/v1.183.0...v1.184.0) (2026-11-17)
 
 
