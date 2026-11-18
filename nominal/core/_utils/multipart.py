@@ -343,7 +343,7 @@ def upload_multipart_io(
 
     Args:
         workspace_rid: Nominal workspace rid
-        f: Binary IO to upload
+        f: Binary stream to upload. An empty stream creates a zero-byte object.
         name: Upload filename. Existing extensions are preserved; only names without one use the default.
             Sent literally (no URL-encoding); unsafe storage characters raise ValueError.
         file_type: MIME type and default extension to use when the filename has none.
