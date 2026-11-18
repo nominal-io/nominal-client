@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import io
+import json
 import os
 import re
 import zipfile
@@ -128,6 +130,25 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         def skills(self) -> skills_pb2_grpc.SkillsServiceStub: ...
         @property
         def upload(self) -> upload_api.UploadService: ...
+
+    def as_prompt(self, prompt: str = "") -> str:
+        """Build a prompt that selects this skill by identity for Analyst.
+
+        This formats text locally without making a request or running the skill. The
+        receiving Analyst service resolves the skill's current content and checks access
+        when it consumes the prompt. The skill must be enabled and readable then.
+
+        Args:
+            prompt: Additional instructions appended unchanged after the skill selection.
+                Omit to select the skill without additional instructions.
+
+        Returns:
+            Prompt text containing the skill reference and any additional instructions.
+        """
+        payload = json.dumps({"skillRid": self.rid, "source": "record", "v": 2}, separators=(",", ":"), sort_keys=True)
+        reference = "skill:v2:" + base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+        selection = json.dumps({"skillRef": reference}, separators=(",", ":"))
+        return f"<SKILL>{selection}</SKILL>\n\n{prompt}"
 
     def _get_latest_api(self) -> skills_pb2.Skill:
         request = skills_pb2.GetSkillRequest(skill_rid=self.rid)
