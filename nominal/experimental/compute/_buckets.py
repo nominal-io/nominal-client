@@ -120,7 +120,7 @@ def compute_buckets(
         expr: Expression to compute buckets for
         start: Starting timestamp to summarize data from
         end: Ending timestamp to summarize data until
-        buckets: Number of buckets to return
+        buckets: Number of buckets to request, from 1 to 10,000 inclusive.
 
     Returns:
         Decimated data representing the provided numerical expression computed over the provided time range.
@@ -150,7 +150,7 @@ def compute_enum_buckets(
         expr: Expression to compute buckets for
         start: Starting timestamp to sumarize data from
         end: Ending timestamp to summarize data until
-        buckets: Number of buckets to return
+        buckets: Number of buckets to request, from 1 to 10,000 inclusive.
 
     Returns:
         Decimated data representing the provided numerical expression computed over the provided time range.
@@ -179,7 +179,7 @@ def batch_compute_enum_buckets(
         exprs: Expressions to compute buckets for
         start: Starting timestamp to summarize data from
         end: Ending timestamp to summarize data until
-        buckets: Number of buckets to return per expression
+        buckets: Number of buckets to request per expression, from 1 to 10,000 inclusive.
 
     Returns:
         A Sequence of sequences of buckets. The top level sequence corresponds to the input expressions, whereas the
@@ -218,7 +218,7 @@ def batch_compute_buckets(
         exprs: Expressions to compute buckets for
         start: Starting timestamp to summarize data from
         end: Ending timestamp to summarize data until
-        buckets: Number of buckets to return per expression
+        buckets: Number of buckets to request per expression, from 1 to 10,000 inclusive.
 
     Returns:
         A Sequence of sequences of buckets. The top level sequence corresponds to the input expressions, whereas the
@@ -266,6 +266,7 @@ def _batch_results(
 ) -> list[execution_results_pb2.ComputationResult]:
     results = []
     errors: list[Exception] = []
+    # TODO: Report missing or unrecognized outcomes as indexed failures so results stay aligned with inputs.
     for result in response.results:
         assert result.HasField("outcome")
         outcome = result.outcome

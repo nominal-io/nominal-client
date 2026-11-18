@@ -352,7 +352,7 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
             insensitive_match: Substring to match in log messages ignoring case, up to 1,000 characters.
 
                 **Note:** Must not be present with `regex_match`.
-            tags: Tags to filter logs from the channel with
+            tags: Exact tags to match. See :ref:`compute-filter-limits`.
             start: Timestamp to start yielding results from. If not present, searches starting from unix epoch
             end: Timestamp after which to stop yielding results from. If not present, searches until end of time.
         """

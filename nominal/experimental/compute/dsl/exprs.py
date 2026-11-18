@@ -49,7 +49,10 @@ class ChannelExpr(Expr):
 
 @dataclass(frozen=True)
 class EnumExpr(ChannelExpr):
-    """A compute expression for categorical channel data."""
+    """A compute expression for categorical channel data.
+
+    For channel selections with exact tags, see :ref:`compute-filter-limits`.
+    """
 
     @abstractmethod
     def _to_proto(self) -> expressions_pb2.CategoricalExpression:
@@ -103,7 +106,10 @@ class EnumExpr(ChannelExpr):
 
 @dataclass(frozen=True)
 class NumericExpr(ChannelExpr):
-    """A compute expression for numeric channel data and derived signals."""
+    """A compute expression for numeric channel data and derived signals.
+
+    For channel selections with exact tags, see :ref:`compute-filter-limits`.
+    """
 
     @abstractmethod
     def _to_proto(self) -> expressions_pb2.NumericExpression:

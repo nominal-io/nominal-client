@@ -91,3 +91,11 @@ fig
 Zooming in requests new buckets for the visible range, so detail increases until the chart shows raw points.
 
 ![Decimated chart](/guides/images/b4/decimated_lwyjmn.png)
+
+(compute-filter-limits)=
+## Compute request limits
+
+When decimating by bucket count, request 1 to 10,000 buckets per series.
+Each exact tag filter accepts up to 256 key-value pairs. Keys must be 1 to 1,000 characters long.
+Values can be empty and can contain up to 10,000 characters.
+These tag limits apply to channel log searches, Compute expressions, pandas decimation, and Polars export sizing.

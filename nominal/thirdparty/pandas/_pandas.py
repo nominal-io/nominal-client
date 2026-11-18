@@ -190,7 +190,7 @@ def channel_to_dataframe_decimated(
 ) -> pd.DataFrame:
     """Retrieve the channel summary as a pandas.DataFrame, decimated to the given buckets or resolution.
 
-    Enter either the number of buckets or the resolution for the output.
+    Specify either 1 to 10,000 buckets or a resolution. For exact tag filters, see :ref:`compute-filter-limits`.
     Resolution in picoseconds for picosecond-granularity dataset, nanoseconds otherwise.
 
     Only DOUBLE and INT channels are supported. Any other data type raises, either because the

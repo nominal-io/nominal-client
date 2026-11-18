@@ -766,7 +766,7 @@ class PolarsExportHandler:
             channels: Channels to export.
             start: Start of the export time range (nanoseconds UTC).
             end: End of the export time range (nanoseconds UTC).
-            tags: Key-value pairs used to filter channel data server-side.
+            tags: Exact tags to match. Export sizing uses the :ref:`compute-filter-limits`.
             batch_duration: Explicit per-batch time window. If omitted, one is computed
                 from total channel rate and `points_per_dataframe`.
             timestamp_type: Output timestamp representation (`epoch_seconds`, `iso8601`, etc.).
