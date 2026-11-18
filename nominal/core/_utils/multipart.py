@@ -320,9 +320,12 @@ def _put_multipart_upload_to(
             upload_client, upload_id, {p.part_number: p.etag for p in parts_with_size}
         )
         return _CompletedUpload(key=key, location=location)
-    except Exception as e:
-        _abort(upload_client, key, upload_id, e)
-        raise e
+    except Exception as upload_error:
+        try:
+            _abort(upload_client, key, upload_id, upload_error)
+        except Exception as abort_error:
+            raise abort_error from upload_error
+        raise
 
 
 def upload_multipart_io(

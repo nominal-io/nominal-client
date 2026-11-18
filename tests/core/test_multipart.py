@@ -9,6 +9,7 @@ from __future__ import annotations
 import io
 from unittest.mock import MagicMock, patch
 
+import grpc
 import pytest
 import requests
 
@@ -19,7 +20,7 @@ from nominal.core._utils.multipart import (
     _sign_and_put_part,
 )
 from nominal.core.filetype import FileType, FileTypes
-from nominal.exceptions import NominalMultipartUploadFailed
+from nominal.exceptions import NominalMultipartUploadFailed, NominalPermissionDeniedError
 from nominal.protos.uploads.v1 import uploads_pb2
 
 
@@ -319,3 +320,19 @@ def test_failed_file_store_upload_aborts_with_opaque_id() -> None:
     client.DeleteMultipartUpload.assert_called_once_with(
         uploads_pb2.DeleteMultipartUploadRequest(upload_id="opaque-id")
     )
+
+
+def test_failed_abort_chains_original_part_failure(fake_rpc_error) -> None:
+    client = MagicMock()
+    client.CreateMultipartUpload.return_value.multipart_upload.upload_id = "opaque-id"
+    client.DeleteMultipartUpload.side_effect = fake_rpc_error(grpc.StatusCode.PERMISSION_DENIED, "abort denied")
+    put_error = requests.ConnectionError("part upload disconnected")
+    with (
+        patch.object(multipart, "_put_part", side_effect=put_error),
+        pytest.raises(NominalPermissionDeniedError, match="abort denied") as caught,
+    ):
+        multipart.put_multipart_upload(None, io.BytesIO(b"data"), "file", "text/csv", client)
+
+    upload_failure = caught.value.__cause__
+    assert isinstance(upload_failure, NominalMultipartUploadFailed)
+    assert upload_failure.exceptions[0].__cause__ is put_error
