@@ -33,7 +33,7 @@ for skill in skills:
     print(skill.name, skill.is_enabled, skill.get_load_status())
 ```
 
-{py:meth}`~nominal.experimental.analyst.Skill.get_load_status` reads SKILL.md and says whether Analyst can load the skill, and why not when it can't.
+{py:meth}`~nominal.experimental.analyst.Skill.get_load_status` checks SKILL.md and returns a {py:class}`~nominal.experimental.analyst.SkillLoadStatus`, such as `AVAILABLE`, `INVALID`, or `MISSING`.
 Pass `enabled=True` for only the skills that are turned on, or `archive_status` to include archived skills.
 
 Read a skill's SKILL.md, and its reference files:
@@ -67,11 +67,13 @@ skill = analyst.create_skill(
 )
 ```
 
-Names use lowercase letters, digits and single hyphens, and must be unused in the workspace.
+Names use lowercase letters, digits and single hyphens, are at most 64 characters long, and must be unused in the workspace.
 Skills hold UTF-8 text files only.
 Pass `enabled=False` to save a skill without turning it on.
 
-A skill's files are saved together or not at all, so if one can't be saved, you can create the skill again with the same name.
+The files are saved in one batch, then the skill is registered and enabled.
+If registration or enabling fails, read the error and its notes before retrying. A timeout can leave the outcome unknown: the files may remain, or the skill may already exist.
+When the notes give a skill RID, fetch it with `analyst.get_skill(client, rid)` to check its state.
 
 {py:func}`~nominal.experimental.analyst.import_skill` creates a skill from a folder with SKILL.md at its top level, or a .zip holding one:
 
@@ -79,7 +81,7 @@ A skill's files are saved together or not at all, so if one can't be saved, you 
 skill = analyst.import_skill(client, "skills/post-test-review")
 ```
 
-Import reads every file before saving any, and skips paths with a part that starts with ".", such as `.git`.
+Import reads every file before saving any, and skips paths with a part that starts with ".", such as `.git`. Folder imports also skip symbolic links.
 
 ## Edit a skill
 
@@ -114,6 +116,8 @@ except NominalConflictError:
     skill.update(content=summarize_anomalies(skill.get_content()))
 ```
 
+`update` saves the files before updating the skill record. If the second step fails, it raises {py:class}`~nominal.exceptions.NominalError` and reports that SKILL.md was saved. Fetch the skill and read its content before retrying; the conflict-retry example above does not handle this partial-success case.
+
 ## Archive and restore a skill
 
 {py:meth}`~nominal.experimental.analyst.Skill.archive` hides a skill from the library, Analyst and connected agents.
@@ -134,3 +138,4 @@ folder = skill.export("exported-skills")
 ```
 
 The folder holds SKILL.md and every reference file as stored, so you can keep it in git or import it into another workspace.
+Export creates a new folder named after the skill inside the supplied path and refuses to overwrite an existing folder.
