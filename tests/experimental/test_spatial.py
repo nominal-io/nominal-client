@@ -311,7 +311,7 @@ def test_ingest_validates_the_csv_before_uploading(clients: MagicMock, spatial: 
     with pytest.raises(ValueError, match="missing required point-cloud columns"):
         spatial.add_point_cloud_csv(_csv(tmp_path, "a,b,c\n1,2,3\n"))
 
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
     clients.ingest.ingest.assert_not_called()
 
 
@@ -335,7 +335,7 @@ def test_ingest_rejects_half_of_the_time_pair(
     with pytest.raises(ValueError, match="pass both timestamp_column and timestamp_type"):
         spatial.add_point_cloud_csv(_csv(tmp_path, _TIMED_CSV), **kwargs)  # type: ignore[arg-type]
 
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
     clients.ingest.ingest.assert_not_called()
 
 
@@ -356,7 +356,7 @@ def test_ingest_rejects_a_timestamp_type_that_is_not_relative(
             timestamp_type=Epoch("seconds"),  # type: ignore[call-overload]
         )
 
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
     clients.ingest.ingest.assert_not_called()
 
 
@@ -378,7 +378,7 @@ def test_ingest_rejects_units_the_panel_cannot_read(
             timestamp_type=Relative(unit, start=datetime(2026, 3, 4, tzinfo=UTC)),  # type: ignore[arg-type]
         )
 
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
     clients.ingest.ingest.assert_not_called()
 
 

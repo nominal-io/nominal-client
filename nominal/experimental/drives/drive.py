@@ -12,7 +12,6 @@ import pathlib
 from dataclasses import dataclass, field
 from typing import BinaryIO, Protocol, Sequence, cast
 
-from nominal_api import ingest_api, upload_api
 from typing_extensions import Self
 
 from nominal.core._clientsbunch import HasScoutParams
@@ -39,6 +38,7 @@ from nominal.experimental.drives.file import (
     _file_from_proto,
 )
 from nominal.protos.file_store.v1 import drives_pb2, drives_pb2_grpc, file_store_pb2, files_pb2, files_pb2_grpc
+from nominal.protos.uploads.v1 import uploads_pb2, uploads_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
 
@@ -89,7 +89,7 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
         @property
         def drive_files(self) -> files_pb2_grpc.FilesServiceStub: ...
         @property
-        def upload(self) -> upload_api.UploadService: ...
+        def upload(self) -> uploads_pb2_grpc.UploadServiceStub: ...
 
     def _get_latest_api(self) -> file_store_pb2.Drive:
         with translate_grpc_errors():
@@ -424,7 +424,6 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
         target = _destination_to_proto(destination, self.rid)
         mimetype = FileType.from_path(filename).mimetype
         uploaded = _put_multipart_upload_to(
-            self._clients.auth_header,
             self.workspace_rid,
             file_obj,
             filename,
@@ -433,7 +432,8 @@ class Drive(HasRid, RefreshableMixin[file_store_pb2.Drive]):
             chunk_size=chunk_size,
             max_workers=max_workers,
             header_provider=self._clients.header_provider,
-            destination=ingest_api.UploadDestination.FILE_STORE,
+            verify=self._clients.trust_store_path,
+            destination=uploads_pb2.UPLOAD_DESTINATION_FILE_STORE,
         )
 
         return PreparedPut(
@@ -482,7 +482,7 @@ class VirtualDrive(Drive):
         @property
         def drive_files(self) -> files_pb2_grpc.FilesServiceStub: ...
         @property
-        def upload(self) -> upload_api.UploadService: ...
+        def upload(self) -> uploads_pb2_grpc.UploadServiceStub: ...
 
     def status(self) -> VirtualDriveStatus:
         """Probe the backing provider and report its current connectivity.

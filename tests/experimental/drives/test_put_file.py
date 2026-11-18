@@ -5,13 +5,13 @@ import pathlib
 from unittest.mock import MagicMock, patch
 
 import pytest
-from nominal_api import ingest_api
 
 from nominal.experimental.drives import drive as drive_module
 from nominal.experimental.drives.drive import Drive
 from nominal.experimental.drives.errors import FileStoreErrorCode, NominalFileStoreError
 from nominal.experimental.drives.file import ManagedDriveFile
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
+from nominal.protos.uploads.v1 import uploads_pb2
 from tests.experimental.drives._fixtures import (
     change_success,
     drive_proto,
@@ -52,7 +52,7 @@ def test_put_file_uploads_then_commits_the_returned_key(tmp_path: pathlib.Path) 
     change = clients.drive_files.ApplyFileChanges.call_args.args[0].changes[0]
     assert change.put.object.object_key == UPLOADED_KEY
     assert change.put.destination.path.path.path == "data/run-001.csv"
-    assert upload.call_args.kwargs["destination"] is ingest_api.UploadDestination.FILE_STORE
+    assert upload.call_args.kwargs["destination"] == uploads_pb2.UPLOAD_DESTINATION_FILE_STORE
     assert upload.call_args.kwargs["chunk_size"] == 1234
     assert upload.call_args.kwargs["max_workers"] == 3
 
@@ -67,7 +67,7 @@ def test_put_file_names_and_types_the_upload_after_the_destination(tmp_path: pat
     with _patch_upload() as upload:
         drive.put_file(local, "data/run-001.csv")
 
-    _auth_header, _workspace_rid, _f, filename, mimetype, _upload_client = upload.call_args.args
+    _workspace_rid, _f, filename, mimetype, _upload_client = upload.call_args.args
     assert filename == "run-001.csv"
     assert mimetype == "text/csv"
 
@@ -83,7 +83,7 @@ def test_put_file_obj_uploads_from_the_current_position() -> None:
     with _patch_upload() as upload:
         drive.put_file_obj(stream, "data/run-001.csv")
 
-    uploaded_stream = upload.call_args.args[2]
+    uploaded_stream = upload.call_args.args[1]
     assert uploaded_stream.read() == b"a,b\n1,2\n"
 
 
@@ -103,7 +103,7 @@ def test_put_file_obj_rejects_streams_it_cannot_measure_before_uploading() -> No
     with pytest.raises(ValueError, match="empty"):
         drive.put_file_obj(exhausted, "data/x.csv")
 
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
 
 
 def test_put_file_rejects_a_virtual_drive_before_uploading(tmp_path: pathlib.Path) -> None:
@@ -115,7 +115,7 @@ def test_put_file_rejects_a_virtual_drive_before_uploading(tmp_path: pathlib.Pat
         drive.put_file(_local_file(tmp_path), "data/run-001.csv")
 
     assert excinfo.value.code is FileStoreErrorCode.READ_ONLY_DRIVE
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
     clients.drive_files.ApplyFileChanges.assert_not_called()
 
 
@@ -129,7 +129,7 @@ def test_put_file_rejects_a_read_only_managed_drive_before_uploading(tmp_path: p
         drive.put_file(_local_file(tmp_path), "data/run-001.csv")
 
     assert excinfo.value.code is FileStoreErrorCode.READ_ONLY_DRIVE
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
     clients.drive_files.ApplyFileChanges.assert_not_called()
 
 
@@ -146,7 +146,7 @@ def test_put_file_rejects_a_missing_path_a_directory_and_an_empty_file(tmp_path:
     with pytest.raises(ValueError, match="empty"):
         drive.put_file(empty, "data/x.csv")
 
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
 
 
 def test_put_file_rejects_a_destination_with_no_filename(tmp_path: pathlib.Path) -> None:
@@ -157,7 +157,7 @@ def test_put_file_rejects_a_destination_with_no_filename(tmp_path: pathlib.Path)
     with pytest.raises(ValueError, match="no filename"):
         drive.put_file(_local_file(tmp_path), "data/")
 
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()
 
 
 def test_put_file_accepts_names_object_storage_would_reject() -> None:
@@ -169,7 +169,7 @@ def test_put_file_accepts_names_object_storage_would_reject() -> None:
     with _patch_upload() as upload:
         drive.put_file_obj(io.BytesIO(b"%PDF"), "reports/O'Brien 50%.pdf")
 
-    assert upload.call_args.args[3] == "O'Brien 50%.pdf"
+    assert upload.call_args.args[2] == "O'Brien 50%.pdf"
 
 
 def test_put_onto_an_existing_file_adds_a_version_to_it() -> None:
@@ -188,7 +188,7 @@ def test_put_onto_an_existing_file_adds_a_version_to_it() -> None:
 
     change = clients.drive_files.ApplyFileChanges.call_args.args[0].changes[0]
     assert change.put.destination.file_revision_rid == "ri.rev.head"
-    assert upload.call_args.args[3] == "run-001.csv"
+    assert upload.call_args.args[2] == "run-001.csv"
 
 
 def test_put_onto_a_file_in_another_drive_is_rejected_before_uploading() -> None:
@@ -201,4 +201,4 @@ def test_put_onto_a_file_in_another_drive_is_rejected_before_uploading() -> None
     with pytest.raises(ValueError, match="different drive"):
         managed_drive(clients).put_file_obj(io.BytesIO(b"a"), elsewhere)
 
-    clients.upload.initiate_multipart_upload.assert_not_called()
+    clients.upload.CreateMultipartUpload.assert_not_called()

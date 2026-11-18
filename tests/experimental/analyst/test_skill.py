@@ -23,6 +23,7 @@ from nominal.experimental import analyst
 from nominal.experimental.analyst import Skill
 from nominal.protos.file_store.v1 import file_store_pb2, files_pb2
 from nominal.protos.skills.v1 import skills_pb2
+from nominal.protos.uploads.v1 import uploads_pb2
 
 _RID = "ri.file-store.main.skill.0b8f6c1e-0d3c-4c43-9a55-6f0d3c1e2b7a"
 _WORKSPACE = "ri.workspace.main.workspace.1"
@@ -115,7 +116,8 @@ def uploads(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
     # Uploads run on several threads, so each key comes from one shared counter.
     counter = itertools.count()
 
-    def upload(auth_header, workspace_rid, data, filename, mimetype, upload_client, **kwargs):
+    def upload(workspace_rid, data, filename, mimetype, upload_client, *, destination, **kwargs):
+        assert destination == uploads_pb2.UPLOAD_DESTINATION_FILE_STORE
         key = f"key-{next(counter)}-{filename}"
         uploaded[key] = data.read()
         return MagicMock(key=key)
@@ -403,7 +405,8 @@ def test_a_failed_upload_saves_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     """Files upload at once, and one that fails stops the save before File Store applies any."""
     client, clients = _client()
 
-    def upload(auth_header, workspace_rid, data, filename, mimetype, upload_client, **kwargs):
+    def upload(workspace_rid, data, filename, mimetype, upload_client, *, destination, **kwargs):
+        assert destination == uploads_pb2.UPLOAD_DESTINATION_FILE_STORE
         if filename == "b.md":
             raise requests.ConnectionError("upload failed")
         return MagicMock(key=f"key-{filename}")
