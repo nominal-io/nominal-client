@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.186.0](https://github.com/nominal-io/nominal-client/compare/v1.185.0...v1.186.0) (2026-11-18)
+
+
+### Features
+
+* let checklists add event labels to every check ([#1327](https://github.com/nominal-io/nominal-client/issues/1327)) ([2f36de5](https://github.com/nominal-io/nominal-client/commit/2f36de576af305eb98c19c3754a816709e7cf6e5))
+* let checklists set check event type ([#1326](https://github.com/nominal-io/nominal-client/issues/1326)) ([2feb997](https://github.com/nominal-io/nominal-client/commit/2feb997b7085bb6660e2cd956266c29a9618429a))
+* migrate upload service to gRPC ([#1288](https://github.com/nominal-io/nominal-client/issues/1288)) ([8db9a10](https://github.com/nominal-io/nominal-client/commit/8db9a10e821b40558b90826caf65742e32d84d54))
+* set check priority from ChecklistBuilder ([#1306](https://github.com/nominal-io/nominal-client/issues/1306)) ([b7022b9](https://github.com/nominal-io/nominal-client/commit/b7022b908168a10904cc13745a032b42d9d48a6d))
+
 ## [1.185.0](https://github.com/nominal-io/nominal-client/compare/v1.184.0...v1.185.0) (2026-11-18)
 
 
