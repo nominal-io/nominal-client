@@ -21,11 +21,11 @@ _CHECK_KEY_NAMESPACE = UUID("52e0d79d-a67f-4d15-8cb6-a294f8c64b4e")
 
 
 @dataclass(frozen=True, kw_only=True)
-class CheckDefinition:
+class CheckTemplate:
     """A reusable failure condition written in the frontend compute language.
 
-    Bind channels when adding this definition to a `ChecklistBuilder`. Use
-    ``dataclasses.replace`` or ordinary Python functions to create variations.
+    Bind channels when adding the template to a ``ChecklistBuilder``. Omit priority
+    to supply it when adding the check or inherit the builder default.
 
     Args:
         title: Display name of the check.
@@ -52,6 +52,17 @@ class CheckDefinition:
     key: str | None = None
     event_type: EventType | None = None
     event_labels: Sequence[str] | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckDefinition(CheckTemplate):
+    """A reusable check with a required default priority.
+
+    Supply the fields described by ``CheckTemplate`` and a ``Priority``. Pass a
+    priority to ``ChecklistBuilder.add`` to override it for one checklist.
+    """
+
+    priority: Priority = field()
 
 
 def _expression_references(node: object) -> set[str]:
@@ -137,7 +148,7 @@ class ChecklistBuilder:
         self._variables: list[scout_checks_api.UnresolvedChecklistVariable] = []
 
     def add(
-        self, check: CheckDefinition, *, inputs: Mapping[str, ChannelBinding], priority: Priority | None = None
+        self, check: CheckTemplate, *, inputs: Mapping[str, ChannelBinding], priority: Priority | None = None
     ) -> Self:
         """Compile and bind a reusable check, capturing its source and channels locally.
 

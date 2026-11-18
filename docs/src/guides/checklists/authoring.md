@@ -80,7 +80,7 @@ For live data, see [Trigger alerts](/guides/streaming/streaming-checklists.md).
 | --- | --- | --- |
 | `title` | Display name. | Required |
 | `expression` | Compute expression returning the time ranges where the check fails. | Required |
-| `priority` | Default severity, from `Priority.P0`, the most severe, to `Priority.P4`. | None |
+| `priority` | Default severity, from `Priority.P0`, the most severe, to `Priority.P4`. | Required |
 | `description` | Longer explanation. | Empty |
 | `key` | Identity that stays the same across versions. | New identity on each `add` |
 | `event_type` | {py:class}`~nominal.core.EventType` of the events the check creates. `UNKNOWN` isn't allowed. | `ERROR` |
@@ -93,10 +93,13 @@ the first in this list wins:
 2. the check's own `priority`
 3. `default_priority` on `ChecklistBuilder`
 
-If none of these are set, `add` fails.
+Use {py:class}`~nominal.experimental.compute_as_code.CheckTemplate` when a check has no default priority of its own.
+It accepts the same fields as `CheckDefinition` and lets you omit `priority`. If all three priorities are unset, `add` fails.
 
 ```python
-overheating = CheckDefinition("Engine overheating", "(temperature > 100).ranges()")
+from nominal.experimental.compute_as_code import CheckTemplate
+
+overheating = CheckTemplate("Engine overheating", "(temperature > 100).ranges()")
 builder = ChecklistBuilder(default_priority=Priority.P3)
 builder.add(
     overheating,
