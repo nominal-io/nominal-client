@@ -4,13 +4,13 @@ from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
 from nominal.core import NominalClient
-from nominal.core._utils.compute import series_summary_input
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.exceptions import NominalComputeError
 from nominal.experimental.compute.dsl import exprs as _exprs
 from nominal.experimental.compute.dsl import params
 from nominal.protos.compute.v1 import (
     categorical_results_pb2,
+    computation_spec_pb2,
     compute_pb2,
     execution_inputs_pb2,
     execution_options_pb2,
@@ -251,13 +251,18 @@ def _create_compute_request_buckets(
         if isinstance(expr, _exprs.NumericExpr)
         else expressions_pb2.SeriesExpression(categorical=expr._to_proto())
     )
-    return series_summary_input(
-        series,
-        _SecondsNanos.from_nanoseconds(start).to_proto(),
-        _SecondsNanos.from_nanoseconds(end).to_proto(),
-        execution_options_pb2.SeriesSummarization(
-            bucket_count=execution_options_pb2.BucketCountSummary(bucket_count=buckets)
+    return execution_inputs_pb2.ExecutionInput(
+        computation=computation_spec_pb2.ComputationSpec(
+            series_summary=computation_spec_pb2.SeriesSummarySpec(
+                input=series,
+                summarization=execution_options_pb2.SeriesSummarization(
+                    bucket_count=execution_options_pb2.BucketCountSummary(bucket_count=buckets)
+                ),
+            )
         ),
+        context=expressions_pb2.ComputeContext(),
+        start=_SecondsNanos.from_nanoseconds(start).to_proto(),
+        end=_SecondsNanos.from_nanoseconds(end).to_proto(),
     )
 
 

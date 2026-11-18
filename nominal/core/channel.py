@@ -27,7 +27,6 @@ from nominal.core._utils.api_tools import (
     create_api_tags,
     create_compute_tag_constraints,
 )
-from nominal.core._utils.compute import series_summary_input
 from nominal.core._utils.frontend_urls import dataset_url
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.bounds import Bounds
@@ -35,9 +34,11 @@ from nominal.core.log import LogPoint, _log_filter_operator
 from nominal.core.unit import UnitLike, _unit_symbol_from_unit_like
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2, channel_metadata_pb2_grpc
 from nominal.protos.compute.v1 import (
+    computation_spec_pb2,
     compute_pb2,
     compute_pb2_grpc,
     constants_pb2,
+    execution_inputs_pb2,
     execution_options_pb2,
     execution_results_pb2,
     expressions_pb2,
@@ -373,15 +374,20 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
 
         def request_factory(page_token: str | None) -> compute_pb2.ComputeRequest:
             return compute_pb2.ComputeRequest(
-                input=series_summary_input(
-                    expressions_pb2.SeriesExpression(log=log_series),
-                    api_start,
-                    api_end,
-                    execution_options_pb2.SeriesSummarization(
-                        point_page=execution_options_pb2.PointPageSummary(
-                            page_size=PAGE_SIZE,
-                            page_token=page_token or "",
-                            direction=execution_options_pb2.COMPUTE_TIME_DIRECTION_ASCENDING,
+                input=execution_inputs_pb2.ExecutionInput(
+                    context=expressions_pb2.ComputeContext(),
+                    start=api_start,
+                    end=api_end,
+                    computation=computation_spec_pb2.ComputationSpec(
+                        series_summary=computation_spec_pb2.SeriesSummarySpec(
+                            input=expressions_pb2.SeriesExpression(log=log_series),
+                            summarization=execution_options_pb2.SeriesSummarization(
+                                point_page=execution_options_pb2.PointPageSummary(
+                                    page_size=PAGE_SIZE,
+                                    page_token=page_token or "",
+                                    direction=execution_options_pb2.COMPUTE_TIME_DIRECTION_ASCENDING,
+                                )
+                            ),
                         )
                     ),
                 )
@@ -551,11 +557,15 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
                 fixed_resolution=execution_options_pb2.FixedResolutionSummary(resolution_nanos=resolution)
             )
         request = compute_pb2.ComputeRequest(
-            input=series_summary_input(
-                self._to_proto_compute_series(tags=tags),
-                _SecondsNanos.from_flexible(start).to_proto(),
-                _SecondsNanos.from_flexible(end).to_proto(),
-                summarization,
+            input=execution_inputs_pb2.ExecutionInput(
+                start=_SecondsNanos.from_flexible(start).to_proto(),
+                end=_SecondsNanos.from_flexible(end).to_proto(),
+                computation=computation_spec_pb2.ComputationSpec(
+                    series_summary=computation_spec_pb2.SeriesSummarySpec(
+                        input=self._to_proto_compute_series(tags=tags), summarization=summarization
+                    )
+                ),
+                context=expressions_pb2.ComputeContext(),
             )
         )
         with translate_grpc_errors():

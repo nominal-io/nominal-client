@@ -10,15 +10,17 @@ from nominal_api import api, scout_compute_api, scout_dataexport_api
 import polars as pl
 from nominal._utils import LogTiming
 from nominal._utils.iterator_tools import batched
-from nominal.core._utils.compute import series_summary_input
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core.channel import Channel, ChannelDataType, filter_channels_with_data
 from nominal.core.client import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.protos.compute.v1 import (
+    computation_spec_pb2,
     compute_pb2,
+    execution_inputs_pb2,
     execution_options_pb2,
     execution_results_pb2,
+    expressions_pb2,
 )
 from nominal.ts import (
     Epoch,
@@ -182,7 +184,17 @@ def _batch_channel_points_per_second(
             bucket_count=execution_options_pb2.BucketCountSummary(bucket_count=num_buckets)
         )
         request = compute_pb2.BatchComputeWithUnitsRequest(
-            inputs=[series_summary_input(series, api_start, api_end, summarization) for series in series_list]
+            inputs=[
+                execution_inputs_pb2.ExecutionInput(
+                    context=expressions_pb2.ComputeContext(),
+                    start=api_start,
+                    end=api_end,
+                    computation=computation_spec_pb2.ComputationSpec(
+                        series_summary=computation_spec_pb2.SeriesSummarySpec(input=series, summarization=summarization)
+                    ),
+                )
+                for series in series_list
+            ]
         )
         with translate_grpc_errors():
             resp = client._clients.compute.BatchComputeWithUnits(request)
