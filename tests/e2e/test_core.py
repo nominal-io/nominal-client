@@ -35,7 +35,7 @@ from nominal.core.retention import KeepForever, KeepUntilExpiry
 from nominal.exceptions import NominalFailedPreconditionError, NominalPermissionDeniedError
 from nominal.thirdparty.pandas import channel_to_series, datasource_to_dataframe
 from nominal.ts import ISO_8601, _SecondsNanos
-from tests.e2e import POLL_INTERVAL, _create_random_start_end
+from tests.e2e import POLL_INTERVAL, _create_random_start_end, create_legacy_dataset
 
 ArchiveFn = Callable[[object], None]
 
@@ -47,14 +47,13 @@ DATASET_REF = "dataset-ref"
 VIDEO_REF = "video-ref"
 
 
-def test_update_dataset(client: NominalClient, csv_data, archive: ArchiveFn):
+def test_update_dataset(client: NominalClient, archive: ArchiveFn):
     """Calling `dataset.update()` mutates name, description, properties, and labels in-place."""
     name = f"dataset-{uuid4()}"
     desc = f"core test to update a dataset {uuid4()}"
 
     ds = client.create_dataset(name, description=desc)
     archive(ds)
-    ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(interval=POLL_INTERVAL)
 
     new_name = name + "-updated"
     new_desc = desc + "-updated"
@@ -109,11 +108,10 @@ def test_update_run(client: NominalClient, archive: ArchiveFn):
     assert run.end == _SecondsNanos.from_datetime(new_end).to_nanoseconds()
 
 
-def test_add_dataset_to_run_and_list_datasets(client: NominalClient, csv_data, archive: ArchiveFn):
+def test_add_dataset_to_run_and_list_datasets(client: NominalClient, archive: ArchiveFn):
     """Linking a dataset to a run with a custom ref-name is reflected in `run.list_datasets()`."""
     ds = client.create_dataset(f"dataset-{uuid4()}")
     archive(ds)
-    ds.add_from_io(BytesIO(csv_data), "timestamp", "iso_8601").poll_until_ingestion_completed(interval=POLL_INTERVAL)
 
     run = client.create_run(f"run-{uuid4()}", *_create_random_start_end())
     archive(run)
@@ -364,7 +362,7 @@ def test_download_dataset_file_roundtrips_to_disk(
     client: NominalClient, csv_data: bytes, tmp_path: Path, archive: Callable[..., None]
 ) -> None:
     """Uploading a CSV and downloading it via MultipartFileDownloader produces byte-identical content on disk."""
-    ds = client.create_dataset(f"dataset-{uuid4()}")
+    ds = create_legacy_dataset(client, f"dataset-{uuid4()}")
     archive(ds)
 
     dataset_file = ds.add_from_io(BytesIO(csv_data), "timestamp", ISO_8601)

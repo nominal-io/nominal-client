@@ -32,7 +32,7 @@ from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import DatasetFile
 from nominal.ts import Custom, Relative, _SecondsNanos
-from tests.e2e import POLL_INTERVAL
+from tests.e2e import POLL_INTERVAL, create_legacy_dataset
 
 Formatter = Callable[[int, datetime], str]
 
@@ -133,7 +133,7 @@ def _upload_and_assert(
         expected_end_ns: Expected ingested end timestamp, in nanoseconds-since-epoch.
         tolerance_ns: Passed through to `_assert_bounds`; see that function for details.
     """
-    ds = client.create_dataset(name, description=desc)
+    ds = create_legacy_dataset(client, name, description=desc)
     try:
         dataset_file = ds.add_from_io(BytesIO(csv_bytes), "timestamp", timestamp_type).poll_until_ingestion_completed(
             interval=POLL_INTERVAL
