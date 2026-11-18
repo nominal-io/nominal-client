@@ -97,8 +97,8 @@ The order of the types in the `values` union must match:
     {"name": "timestamps", "type": {"type": "array", "items": "long"}},
     {"name": "values", "type": {"type": "array", "items": [
       "double",
-      "long",
       "string",
+      "long",
       {"type": "record", "name": "DoubleArray",
        "fields": [{"name": "items", "type": {"type": "array", "items": "double"}}]},
       {"type": "record", "name": "StringArray",
