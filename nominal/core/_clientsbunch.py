@@ -303,9 +303,10 @@ class ClientsBunch:
             user_agent=agent,
             auth_header=f"Bearer {token}",
             header_provider=header_provider,
-            # Replaying a committed write after a lost reply can turn success into a stale-revision error.
+            # A replay can mask a committed write with a refusal and trigger incorrect skill-file cleanup.
             no_retry_methods=(
                 ("nominal.file_store.v1.FilesService", "ApplyFileChanges"),
+                ("nominal.skills.v1.SkillsService", "CreateSkill"),
                 ("nominal.skills.v1.SkillsService", "UpdateSkill"),
             ),
         )

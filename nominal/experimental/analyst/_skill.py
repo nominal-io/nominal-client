@@ -354,6 +354,7 @@ class Skill(HasRid, RefreshableGrpcMixin[skills_pb2.Skill]):
         # writing any file.
         destinations = {file_path: _export_destination(target, file_path) for file_path in files}
         texts = {file_path: _read_text(self._clients, file) for file_path, file in files.items()}
+        target.mkdir(parents=True, exist_ok=False)
         for file_path, text in texts.items():
             destination = destinations[file_path]
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -572,7 +573,7 @@ def _create_skill(
     # Finding the skills drive also refuses a user who can't edit the workspace's configuration.
     folder = _SkillFolder(drive_rid=_skills_drive_rid(clients, workspace_rid), name=name)
     # A folder with files but no SKILL.md is still taken by that name.
-    if _list_folder(clients, folder):
+    if not _is_empty(clients, folder):
         raise NominalAlreadyExistsError(f"A skill named {name} already exists in workspace {workspace_rid}")
     puts = {path: (text, _at_path(folder.path_of(path))) for path, text in texts.items()}
     try:
@@ -633,7 +634,11 @@ def _skill_name(content: str, *, enabled: bool) -> str:
         raise ValueError("An enabled SKILL.md must fit in 64 KiB of UTF-8 text")
     match = _FRONTMATTER.match(content)
     try:
-        frontmatter = yaml.safe_load(match.group(1)) if match else None
+        source = match.group(1) if match else ""
+        # Scout rejects alias events. Once safe_load resolves them, they are indistinguishable from literal values.
+        if enabled and any(isinstance(event, yaml.AliasEvent) for event in yaml.parse(source, Loader=yaml.SafeLoader)):
+            raise ValueError("Enabled skill frontmatter cannot contain YAML aliases")
+        frontmatter = yaml.safe_load(source)
     except yaml.YAMLError as ex:
         raise ValueError("SKILL.md's frontmatter is not valid YAML") from ex
     fields = frontmatter if isinstance(frontmatter, dict) else {}
@@ -644,24 +649,30 @@ def _skill_name(content: str, *, enabled: bool) -> str:
             f"at most {_MAX_NAME_LENGTH} characters"
         )
     if enabled:
-        description = fields.get("description")
-        if (
-            not isinstance(description, str)
-            or not 0 < len(description.strip().encode("utf-16-le")) <= 2 * _MAX_DESCRIPTION_LENGTH
-        ):
-            raise ValueError(f"{_DESCRIPTION_NEEDED}; pass enabled=False to save a draft")
-        for field_name in ("license", "compatibility", "allowed-tools"):
-            if field_name in fields:
-                value = fields[field_name]
-                if not isinstance(value, str) or not value:
-                    raise ValueError(f"{field_name} must be nonempty text")
-                if field_name == "compatibility" and len(value.encode("utf-16-le")) > 1000:
-                    raise ValueError("compatibility exceeds Scout's 500 UTF-16 code unit limit")
-        if "metadata" in fields:
-            metadata = fields["metadata"]
-            if not isinstance(metadata, dict) or not all(isinstance(v, str) for v in metadata.values()):
-                raise ValueError("metadata must be a mapping with text values")
+        _validate_enabled_entry(fields)
     return name
+
+
+def _utf16_length(value: str) -> int:
+    """Count UTF-16 code units, as Scout does for frontmatter text limits."""
+    return len(value.encode("utf-16-le")) // 2
+
+
+def _validate_enabled_entry(fields: Mapping[str, object]) -> None:
+    description = fields.get("description")
+    if not isinstance(description, str) or not 0 < _utf16_length(description.strip()) <= _MAX_DESCRIPTION_LENGTH:
+        raise ValueError(f"{_DESCRIPTION_NEEDED}; pass enabled=False to save a draft")
+    for field_name in ("license", "compatibility", "allowed-tools"):
+        if field_name in fields:
+            value = fields[field_name]
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"{field_name} must be nonempty text")
+            if field_name == "compatibility" and _utf16_length(value) > 500:
+                raise ValueError("compatibility exceeds Scout's 500 UTF-16 code unit limit")
+    if "metadata" in fields:
+        metadata = fields["metadata"]
+        if not isinstance(metadata, dict) or not all(isinstance(v, str) for v in metadata.values()):
+            raise ValueError("metadata must be a mapping with text values")
 
 
 def _file_path(path: str) -> str:

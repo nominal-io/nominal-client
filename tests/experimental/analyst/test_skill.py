@@ -802,6 +802,24 @@ def test_export_writes_every_file_under_the_skill_name(downloads, tmp_path: Path
         skill.export(tmp_path)
 
 
+def test_export_refuses_folder_created_during_download(downloads, tmp_path: Path) -> None:
+    """A competing export that claimed the destination keeps its directory to itself."""
+    clients = _skill_clients()
+    skill = Skill._from_proto(clients, _proto_skill())
+    clients.drive_files.ListFiles.return_value = _listing(_entry("rev-entry"))
+    target = tmp_path / "post-test-review"
+
+    def claim_folder(request):
+        target.mkdir()
+        return files_pb2.GetDownloadUrlResponse(url="https://storage/rev-entry")
+
+    clients.drive_files.GetDownloadUrl.side_effect = claim_folder
+    downloads["https://storage/rev-entry"] = _SKILL_MD.encode()
+    with pytest.raises(FileExistsError):
+        skill.export(tmp_path)
+    assert list(target.iterdir()) == []
+
+
 def test_export_refuses_a_path_that_could_leave_the_folder(downloads, tmp_path: Path) -> None:
     """File Store accepts backslashes, which Windows reads as separators, so export writes nothing for such a path."""
     clients = _skill_clients()
@@ -1057,12 +1075,13 @@ def test_remove_refuses_reused_folder() -> None:
     "content",
     [
         _SKILL_MD + "é" * 32768,
+        _SKILL_MD.replace("license: MIT", "license: &label MIT\nallowed-tools: *label"),
         _SKILL_MD.replace("license: MIT", "license: []"),
         _SKILL_MD.replace("description:", "allowed-tools: []\ndescription:"),
         _SKILL_MD.replace("description:", "metadata: {author: [a]}\ndescription:"),
         _SKILL_MD.replace("description:", "compatibility: ''\ndescription:"),
     ],
-    ids=["size", "license", "allowed-tools", "metadata", "compatibility"],
+    ids=["size", "alias", "license", "allowed-tools", "metadata", "compatibility"],
 )
 def test_invalid_enabled_content_is_never_uploaded(uploads, content) -> None:
     """An inadmissible replacement leaves a working skill's entry intact."""
