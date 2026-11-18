@@ -68,10 +68,10 @@ skill = analyst.create_skill(
 ```
 
 Names use lowercase letters, digits and single hyphens, are at most 64 characters long, and must be unused in the workspace.
-Skills hold UTF-8 text files only.
+The client imports and writes UTF-8 text files only.
 Pass `enabled=False` to save a skill without turning it on.
 
-The files are saved in one batch, then the skill is registered and enabled.
+The files are saved in one batch, then the skill is registered and enabled by default.
 If registration or enabling fails, read the error and its notes before retrying. A timeout can leave the outcome unknown: the files may remain, or the skill may already exist.
 When the notes give a skill RID, fetch it with `analyst.get_skill(client, rid)` to check its state.
 
@@ -116,7 +116,7 @@ except NominalConflictError:
     skill.update(content=summarize_anomalies(skill.get_content()))
 ```
 
-`update` saves the files before updating the skill record. If the second step fails, it raises {py:class}`~nominal.exceptions.NominalError` and reports that SKILL.md was saved. Fetch the skill and read its content before retrying; the conflict-retry example above does not handle this partial-success case.
+When replacing content, `update` saves the files before updating the skill record. If the second step fails, it raises {py:class}`~nominal.exceptions.NominalError` and reports that SKILL.md was saved. Fetch the skill and read its content before retrying; the conflict-retry example above does not handle this partial-success case.
 
 ## Archive and restore a skill
 
