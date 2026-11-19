@@ -12,7 +12,7 @@ kernelspec:
 # ECG from a heart monitor (WFDB)
 
 Read a PhysioNet WFDB record (an ECG with beat labels) with `nominal.io`, explore it with the `df.nom` accessor,
-and plot it with the Nominal plotly style. This example needs no Nominal profile; see
+and plot it with the Nominal plotly style (`nominal.style`). This example needs no Nominal profile; see
 [Upload a DataFrame](upload_dataframe.md) for sending data to Nominal.
 
 It needs the WFDB reader: `pip install nominal[wfdb,plotly]`.
@@ -50,9 +50,9 @@ The second cell reads the first minute (21,600 samples at 360 Hz).
 ```{code-cell} ipython3
 import nominal.io
 import nominal.pandas  # registers df.nom
-import nominal.plotly
+import nominal.style
 
-nominal.plotly.set_style()
+nominal.style.use("plotly")
 df = nominal.io.read(
     "data/wfdb/119.hea", start="2026-01-01T12:00:00Z", sampto=60 * 360
 )

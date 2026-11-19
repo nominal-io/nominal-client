@@ -27,11 +27,11 @@ import numpy as np
 
 import nominal.io
 import nominal.pandas  # registers df.nom
-import nominal.plotly
+import nominal.style
 from nominal.io import ChunkBuilder
 from nominal.io.instro import write_avro
 
-nominal.plotly.set_style()
+nominal.style.use("plotly")
 
 t0 = 1_760_000_000_000_000_000  # 2025-10-09T08:53:20Z, in ns
 n = 200
