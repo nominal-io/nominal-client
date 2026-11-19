@@ -17,6 +17,7 @@ The main components of the `nominal` package are:
 - **[`nominal.experimental`](experimental/index.md)**: cutting-edge experiments. These APIs may change without notice.
 - **[`nominal.config`](config/index.md)**: profiles, and getting a client on the active one.
 - **[`nominal.io`](io/index.md)**: read files of many formats into one frame, and add your own formats.
+- **[`nominal.style`](style/index.md)**: Nominal's look for plots, starting with plotly.
 - **[`nominal.pandas`](pandas/index.md)**: the `df.nom` accessor, and DataFrame upload and export helpers.
 - **[Third-Party Integrations](thirdparty/index.md)**: integrations with popular third-party libraries and formats.
 

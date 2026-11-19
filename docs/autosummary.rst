@@ -24,6 +24,7 @@
    nominal.config
    nominal.io
    nominal.io.testing
+   nominal.style
    nominal.io.instro
    nominal.thirdparty.matlab
    nominal.pandas
