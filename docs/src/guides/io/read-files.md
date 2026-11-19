@@ -75,3 +75,5 @@ df = nominal.io.read("119.hea", start="2026-01-01T12:00:00Z", sampfrom=0, sampto
 
 To filter, slice and reshape the DataFrame, use the [`df.nom` accessor](/ref/pandas/index.md#the-dfnom-accessor).
 To read a format that isn't installed, see [Add a file format](/guides/io/write-a-reader.md).
+
+For worked examples, see [ECG from WFDB](/examples/ecg_wfdb.md), [instro captures in any format](/examples/instro_captures.md) and [uploading a DataFrame](/examples/upload_dataframe.md).
