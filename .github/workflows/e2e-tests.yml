@@ -64,6 +64,9 @@ jobs:
             -vv
 
       - name: Run e2e tests
+        # faulthandler_timeout prints every thread's stack once a test, fixture setup and teardown
+        # included, runs past three minutes. The test carries on; the dump is there so a run cut
+        # off by the job timeout still shows which wait it was stuck in.
         run: |
           uv run pytest tests/e2e \
             --ignore=tests/e2e/migration \
@@ -71,6 +74,7 @@ jobs:
             --profile staging-e2e \
             --temporary-api-key \
             --no-cov \
+            -o faulthandler_timeout=180 \
             -v
 
   migration-e2e-tests:

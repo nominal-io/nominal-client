@@ -1,8 +1,41 @@
 import random
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+
+from nominal_api import scout_catalog
+
+from nominal.core import NominalClient
+from nominal.core.dataset import Dataset, _create_dataset_request
 
 POLL_INTERVAL = timedelta(seconds=0.1)
 """Default polling interval for `poll_until_ingestion_completed` calls in e2e tests."""
+
+
+def create_legacy_dataset(client: NominalClient, name: str, description: str | None = None) -> Dataset:
+    """Create a LEGACY-backed dataset, for tests that ingest a file but are not about the backing type.
+
+    The environment default backing can take two minutes to ingest a ten-row file, where LEGACY takes
+    seconds. Tests that need the default backing get their datasets from the `default_backed_datasets`
+    fixture instead.
+    """
+    clients = client._clients
+    request = _create_dataset_request(
+        name,
+        description=description,
+        workspace_rid=clients.resolve_default_workspace_rid(),
+        dataset_type=scout_catalog.DatasetBackingType.LEGACY,
+    )
+    return Dataset._from_conjure(clients, clients.catalog.create_dataset(clients.auth_header, request))
+
+
+@dataclass(frozen=True)
+class DefaultBackedDatasets:
+    """The ingested datasets the `default_backed_datasets` fixture provides."""
+
+    two_files: Dataset
+    vehicle_a: Dataset
+    vehicle_b: Dataset
+    mixed_vehicles: Dataset
 
 
 def _create_random_start_end() -> tuple[datetime, datetime]:

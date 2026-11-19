@@ -1419,7 +1419,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.185.0"
+version = "1.186.0"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
@@ -1495,9 +1495,9 @@ requires-dist = [
     { name = "click", specifier = ">=8,<9" },
     { name = "conjure-python-client", specifier = ">=3.1.0,<4" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
-    { name = "nominal-api", specifier = "==0.1539.0" },
-    { name = "nominal-api-protos", specifier = "==0.1539.0" },
-    { name = "nominal-compute", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'compute') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'compute')", specifier = "==0.1509.0" },
+    { name = "nominal-api", specifier = "==0.1543.0" },
+    { name = "nominal-api-protos", specifier = "==0.1543.0" },
+    { name = "nominal-compute", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin' and extra == 'compute') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux' and extra == 'compute') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32' and extra == 'compute')", specifier = "==0.1543.0" },
     { name = "nominal-ibis", marker = "extra == 'ibis'", editable = "packages/nominal-ibis" },
     { name = "nominal-streaming", marker = "(platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'arm64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'armv7l' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'x86_64' and platform_python_implementation == 'CPython' and sys_platform == 'linux') or (platform_machine == 'AMD64' and platform_python_implementation == 'CPython' and sys_platform == 'win32')", specifier = "==0.11.0" },
     { name = "nominal-tdms", marker = "extra == 'tdms'", editable = "packages/nominal-tdms" },
@@ -1549,19 +1549,19 @@ docs = [
 
 [[package]]
 name = "nominal-api"
-version = "0.1539.0"
+version = "0.1543.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conjure-python-client" },
     { name = "requests" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a6/56/ffd9d33fbe3ec020c6e41d65c703d8dff3327911a0ea1cc7a52706b9617d/nominal_api-0.1539.0-py3-none-any.whl", hash = "sha256:4ff4470e7db379b6f99523f572f92ddc4f2bf821affb36480b22c87fad0a0779", size = 1213231, upload-time = "2026-11-17T15:51:59.078Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/07/fa247eb646af24e6b560c8eea9826f7c725502f05e77947188aa98ed5998/nominal_api-0.1543.0-py3-none-any.whl", hash = "sha256:47d65969b7098181c9f3e4ec14342d1b5c5acb71e12419c9a9fab513cae49031", size = 1218280, upload-time = "2026-11-18T23:00:27.016Z" },
 ]
 
 [[package]]
 name = "nominal-api-protos"
-version = "0.1539.0"
+version = "0.1543.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "googleapis-common-protos" },
@@ -1569,22 +1569,20 @@ dependencies = [
     { name = "protobuf" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/ef/c0bf32474146a0e261a77814fa84cf90102f13668a4dc08a021b59b5b619/nominal_api_protos-0.1539.0-py3-none-any.whl", hash = "sha256:a87805fabfc718b7a4aef40d8e52a75b669a9d43d05f481a7cca8914f6077f56", size = 1592107, upload-time = "2026-11-17T15:52:01.106Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/78/4ffbd465e74c8c8fd767f6c0b4d2c6e584f4cf99c4caee94c55adc615053/nominal_api_protos-0.1543.0-py3-none-any.whl", hash = "sha256:ef72255f349f05ce07321b38dc7cb2a6bd0bbf69070ea40abb527b8fa94d8a01", size = 1625841, upload-time = "2026-11-18T23:00:30.58Z" },
 ]
 
 [[package]]
 name = "nominal-compute"
-version = "0.1509.0"
+version = "0.1543.0"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ec/6a/2a215fd9658050559501f3135fa7b7c6431797109f355c0e17f147e62101/nominal_compute-0.1509.0-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:c75cc443dcf7a382d30069035de6f5c56fe37393daeded127ed3f051332c85cd", size = 2629129, upload-time = "2026-10-28T03:15:19.533Z" },
-    { url = "https://files.pythonhosted.org/packages/dc/93/8b7fd2b8e68f60a66f1a609ba26477821a85c0b1e5a7c9d914273c79685c/nominal_compute-0.1509.0-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:f060805428d61355d7029f6f53ff8fa95db1b870ba355934b71e5df633091504", size = 2826876, upload-time = "2026-10-28T03:15:21.312Z" },
-    { url = "https://files.pythonhosted.org/packages/88/40/1a9bb722d39e4c1641ca3359158dbc0f5e3a777c3818bd849db6431f1ffe/nominal_compute-0.1509.0-cp311-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:5cb3d8d6156517784a15e053c79a5fe967e6614c07bc06ca9c1ec2bc112f69e3", size = 2741707, upload-time = "2026-10-28T03:15:22.615Z" },
-    { url = "https://files.pythonhosted.org/packages/3a/18/d09dd679093f48ed73c306e871fe82f8f429166a08c605fc8f6f1b964dbb/nominal_compute-0.1509.0-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:18ee7e9c7d939c9ca925a0613a3844c75a9b2f3e705f5c5d19e74d539a81f55a", size = 2914417, upload-time = "2026-10-28T03:15:23.894Z" },
-    { url = "https://files.pythonhosted.org/packages/46/49/4418db56b96394da3f08b8e1d36abd7176b8311f224c410b1dfd90d2055d/nominal_compute-0.1509.0-cp311-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:15d5a5cb4f72b0cccbf9c933ad395aee9d68d2933f081e77ffa775093fa482ad", size = 3002168, upload-time = "2026-10-28T03:15:25.137Z" },
-    { url = "https://files.pythonhosted.org/packages/15/6c/1f61b031a031ddf12201ef19e094884f9a5520b0a898bd082dc67a112235/nominal_compute-0.1509.0-cp311-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:e1af2c1df218220c0185744b8fa6841c3c41bbb3ec5fc0f8784194830fa7f71a", size = 3005442, upload-time = "2026-10-28T03:15:26.525Z" },
-    { url = "https://files.pythonhosted.org/packages/f9/84/254e66f97e0b3c1b0aca3f13de31d0a2f6cad5fde9ae281fa4c465657bd8/nominal_compute-0.1509.0-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:86773f5b6aceeb49d59175545a86251cf5373d3b896bbe10b4b8562a7cb39f16", size = 3082242, upload-time = "2026-10-28T03:15:27.569Z" },
-    { url = "https://files.pythonhosted.org/packages/3b/7b/837b1914da584af3efa5fd411ff7e38dac8f0c2cd42ffef3ff10d22855d3/nominal_compute-0.1509.0-cp311-abi3-win_amd64.whl", hash = "sha256:bd489908ff60a66a190181f8fb0946f8726d3e738a15d987d98f7a66645a76d9", size = 2604837, upload-time = "2026-10-28T03:15:28.781Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/e1/3f175773b550b1c71f40b18189a36cd5dae126f9b3c0cf4060193707e1a0/nominal_compute-0.1543.0-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:86f4eaa717ed36b3381c2a3c8bf2c2dc7c16e8b1c82a87886e54306f5a170010", size = 2631877, upload-time = "2026-11-18T23:06:08.058Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/65/b2f1a63dd7e6d32f1c0080e4910461f8f45756159c7a9b275b2980cd945e/nominal_compute-0.1543.0-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b9ea772426e00f58a703480e7dc3b3ec6210ffae6f82e8ae8aa51f7b43663658", size = 2834453, upload-time = "2026-11-18T23:06:09.586Z" },
+    { url = "https://files.pythonhosted.org/packages/a1/11/d09d9eb8574979e4324cbefa40885ae14b9010dc80833c369cbbba59d4c8/nominal_compute-0.1543.0-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5d747cac5956023605c086ff6fb94421c3a0dae3188118a8fdca4c7509552594", size = 2915131, upload-time = "2026-11-18T23:06:12.358Z" },
+    { url = "https://files.pythonhosted.org/packages/c7/02/23fafc5b8b575895f95c56c6a1186c7e8fe2543a32713e99b4e5e4c8b260/nominal_compute-0.1543.0-cp311-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:c54a512da648e3f20dfdfb4da85519aa0a4ef7eee89a53628e815cc834a67eac", size = 3005200, upload-time = "2026-11-18T23:06:13.515Z" },
+    { url = "https://files.pythonhosted.org/packages/80/e1/034aface93f7c04cc7edf0fc68e94f266b451c6036a4ab8af94c85580443/nominal_compute-0.1543.0-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:bffd44a36108142ecbb2efd31bcfe9a1b80fb74d81ce7c517a765f21ed44b799", size = 3092297, upload-time = "2026-11-18T23:06:15.934Z" },
+    { url = "https://files.pythonhosted.org/packages/76/31/832f5050ca9ca8e94918e32821e285c7ad563fdf8286b2c3d99982c4bdaf/nominal_compute-0.1543.0-cp311-abi3-win_amd64.whl", hash = "sha256:bf0a8169a53307cb839848fdf4a9de3e92460d225be0f6d3164fd6baddbecc20", size = 2613542, upload-time = "2026-11-18T23:06:16.985Z" },
 ]
 
 [[package]]
