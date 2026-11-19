@@ -18,7 +18,7 @@ from nominal.experimental.drives import (
     NominalFileStoreError,
 )
 from nominal.experimental.ingest import IngestBuilder
-from tests.e2e import POLL_INTERVAL
+from tests.e2e import POLL_INTERVAL, create_legacy_dataset
 
 E2E_DRIVE_ID = "sdk-e2e"
 """Drives cannot be deleted and archiving one needs admin rights, so every run shares one drive
@@ -114,7 +114,7 @@ def test_ingest_builder_uses_pinned_revision_alongside_local_file(
     client: NominalClient, drive: Drive, run_dir: str, tmp_path: pathlib.Path, archive
 ) -> None:
     """Ingesting a captured revision reads its original content even after the Drive file changes."""
-    dataset = client.create_dataset(f"drive-ingest-e2e-{uuid4().hex[:8]}")
+    dataset = create_legacy_dataset(client, f"drive-ingest-e2e-{uuid4().hex[:8]}")
     archive(dataset)
     uploaded = drive.put_file_obj(io.BytesIO(b"time,original\n1767268800,1\n"), f"{run_dir}/readings.csv")
     try:

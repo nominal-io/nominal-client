@@ -9,13 +9,13 @@ from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
 from nominal.core.dataset_file import IngestStatus
 from nominal.experimental.ingest import IngestBuilder
-from tests.e2e import POLL_INTERVAL
+from tests.e2e import POLL_INTERVAL, create_legacy_dataset
 
 
 @pytest.fixture
 def dataset_with_units(client: NominalClient, archive, tmp_path: Path) -> Dataset:
     """Ingest a CSV units row with an explicit pressure-unit override into a fresh dataset."""
-    dataset = client.create_dataset(f"units-e2e-{uuid4().hex[:8]}")
+    dataset = create_legacy_dataset(client, f"units-e2e-{uuid4().hex[:8]}")
     archive(dataset)
     path = tmp_path / "readings.csv"
     path.write_text("time,pressure,speed\n,Pa,m/s\n1700000000,101325,4\n")

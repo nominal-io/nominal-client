@@ -213,6 +213,61 @@ def test_strict_rejects_unused_bindings() -> None:
         )
 
 
+SOC = {"soc": ChannelBinding("telemetry", "soc")}
+
+
+@pytest.mark.parametrize(
+    ("from_add", "from_check", "from_builder", "expected"),
+    [
+        (Priority.P1, Priority.P2, Priority.P3, scout_api.Priority.P1),
+        (None, Priority.P2, Priority.P3, scout_api.Priority.P2),
+        (None, None, Priority.P3, scout_api.Priority.P3),
+        (Priority.P0, Priority.P2, Priority.P3, scout_api.Priority.P0),
+        (None, Priority.P0, Priority.P3, scout_api.Priority.P0),
+        (Priority.P1, None, None, scout_api.Priority.P1),
+        (None, None, Priority.P0, scout_api.Priority.P0),
+    ],
+)
+def test_priority_prefers_add_then_check_then_builder(
+    client: NominalClient,
+    mock_clients: MagicMock,
+    from_add: Priority | None,
+    from_check: Priority | None,
+    from_builder: Priority | None,
+    expected: scout_api.Priority,
+) -> None:
+    """The add argument wins, then the check's priority, then the builder default."""
+    check = CheckDefinition("Battery low", "(soc < 40).ranges()", priority=from_check)
+    ChecklistBuilder(default_priority=from_builder).add(check, inputs=SOC, priority=from_add).create(
+        client, "Checks", assignee="user"
+    )
+    assert mock_clients.checklist.create.call_args.args[1].checks[0].create_check.priority == expected
+
+
+def test_reuse_check_definition_with_priority_override(client: NominalClient, mock_clients: MagicMock) -> None:
+    """Each builder captures its own priority while the definition retains its original priority."""
+    check = CheckDefinition("Battery low", "(soc < 40).ranges()", priority=Priority.P2)
+    first = ChecklistBuilder().add(check, inputs=SOC, priority=Priority.P0)
+    second = ChecklistBuilder(default_priority=Priority.P3).add(check, inputs=SOC)
+
+    first.create(client, "Critical checks", assignee="user")
+    second.create(client, "Routine checks", assignee="user")
+    assert [call.args[1].checks[0].create_check.priority for call in mock_clients.checklist.create.call_args_list] == [
+        scout_api.Priority.P0,
+        scout_api.Priority.P2,
+    ]
+    assert check.priority is Priority.P2
+
+
+def test_unset_priority_rejected_on_add(client: NominalClient) -> None:
+    """With no priority at any level, add names the check and leaves the builder empty."""
+    builder = ChecklistBuilder()
+    with pytest.raises(ValueError, match="'Battery low' has no priority"):
+        builder.add(CheckDefinition("Battery low", "(soc < 40).ranges()"), inputs=SOC)
+    with pytest.raises(ValueError, match="at least one check"):
+        builder.create(client, "Empty")
+
+
 CHECK_ID = uuid5(UUID("52e0d79d-a67f-4d15-8cb6-a294f8c64b4e"), "first")
 OTHER_CHECK_ID = uuid5(UUID("52e0d79d-a67f-4d15-8cb6-a294f8c64b4e"), "second")
 
@@ -373,13 +428,77 @@ def test_event_settings_captured_on_add(client: NominalClient, mock_clients: Mag
     assert check.generated_event_labels == ["thermal"]
 
 
-def test_unknown_event_type_rejected_before_add(client: NominalClient) -> None:
-    """The read-side unknown sentinel cannot be published as an event category."""
-    builder = ChecklistBuilder()
-    with pytest.raises(ValueError, match="UNKNOWN"):
+@pytest.mark.parametrize(
+    ("from_add", "from_check", "from_builder", "expected"),
+    [
+        (EventType.INFO, EventType.FLAG, EventType.SUCCESS, event.EventType.INFO),
+        (EventType.INFO, EventType.UNKNOWN, EventType.UNKNOWN, event.EventType.INFO),
+        (None, EventType.FLAG, EventType.SUCCESS, event.EventType.FLAG),
+        (None, None, EventType.SUCCESS, event.EventType.SUCCESS),
+        (None, None, None, None),
+    ],
+)
+def test_event_type_prefers_add_then_check_then_builder(
+    client: NominalClient,
+    mock_clients: MagicMock,
+    from_add: EventType | None,
+    from_check: EventType | None,
+    from_builder: EventType | None,
+    expected: event.EventType | None,
+) -> None:
+    """The add argument wins, then the check's event type, then the builder default, then the service default."""
+    check = CheckDefinition("Battery low", "(soc < 40).ranges()", priority=Priority.P1, event_type=from_check)
+    ChecklistBuilder(default_event_type=from_builder).add(check, inputs=SOC, event_type=from_add).create(
+        client, "Checks", assignee="user"
+    )
+    assert mock_clients.checklist.create.call_args.args[1].checks[0].create_check.generated_event_type == expected
+
+
+@pytest.mark.parametrize(
+    ("from_builder", "from_check", "from_add", "expected"),
+    [
+        ((), None, (), None),
+        ((), [], (), []),
+        ((), ["thermal"], (), ["thermal"]),
+        (["engine"], None, (), ["engine"]),
+        (["engine"], ["thermal"], ["stand-3"], ["engine", "thermal", "stand-3"]),
+        (["engine"], ["engine", "thermal"], ["thermal"], ["engine", "thermal"]),
+    ],
+)
+def test_event_labels_merge_builder_check_and_add(
+    client: NominalClient,
+    mock_clients: MagicMock,
+    from_builder: list[str],
+    from_check: list[str] | None,
+    from_add: list[str],
+    expected: list[str] | None,
+) -> None:
+    """Labels from the builder, the check, and add are combined without duplicates."""
+    check = CheckDefinition("Battery low", "(soc < 40).ranges()", priority=Priority.P1, event_labels=from_check)
+    ChecklistBuilder(event_labels=from_builder).add(check, inputs=SOC, event_labels=from_add).create(
+        client, "Checks", assignee="user"
+    )
+    assert mock_clients.checklist.create.call_args.args[1].checks[0].create_check.generated_event_labels == expected
+
+
+@pytest.mark.parametrize(
+    ("from_add", "from_check", "from_builder"),
+    [
+        (EventType.UNKNOWN, None, None),
+        (None, EventType.UNKNOWN, None),
+        (None, None, EventType.UNKNOWN),
+    ],
+)
+def test_unknown_event_type_rejected_before_add(
+    client: NominalClient, from_add: EventType | None, from_check: EventType | None, from_builder: EventType | None
+) -> None:
+    """The read-side unknown sentinel cannot be published as an event category from any source."""
+    builder = ChecklistBuilder(default_event_type=from_builder)
+    with pytest.raises(ValueError, match="'Invalid': EventType.UNKNOWN"):
         builder.add(
-            CheckDefinition("Invalid", "(x > 0).ranges()", priority=Priority.P1, event_type=EventType.UNKNOWN),
+            CheckDefinition("Invalid", "(x > 0).ranges()", priority=Priority.P1, event_type=from_check),
             inputs={"x": ChannelBinding("telemetry", "temperature")},
+            event_type=from_add,
         )
     with pytest.raises(ValueError, match="at least one check"):
         builder.create(client, "Empty")

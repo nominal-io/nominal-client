@@ -10,16 +10,15 @@ Covers:
     time shift all take effect server-side, by the values that come back rather than by row counts
   - Listing one dataset twice, which the definition keeps but a channel export reads as one series
 
-The `tagged_datasets` fixture is session-scoped: two datasets are ingested once, each tagged with a
-different `vehicle` value, and reused by every test here.
+The input datasets come from the session-scoped `default_backed_datasets` fixture in conftest.py:
+they are ingested once, tagged with `vehicle` values, and reused by every test here.
 """
 
 from __future__ import annotations
 
 import time
 from datetime import timedelta
-from io import BytesIO
-from typing import Callable, Iterator, Mapping, Sequence
+from typing import Callable, Mapping
 from uuid import uuid4
 
 import pandas as pd
@@ -27,7 +26,6 @@ import pytest
 
 from nominal.core import NominalClient
 from nominal.core.dataset import Dataset
-from nominal.core.dataset_file import IngestStatus
 from nominal.experimental.derived_datasets import (
     DerivedDataset,
     DerivedDatasetInput,
@@ -37,25 +35,9 @@ from nominal.experimental.derived_datasets import (
 )
 from nominal.experimental.derived_datasets._derived_datasets import _build_spec
 from nominal.thirdparty.pandas import datasource_to_dataframe
-from tests.e2e import POLL_INTERVAL
+from tests.e2e import DefaultBackedDatasets
 
 ArchiveFn = Callable[[object], None]
-
-
-def _archive_all(datasets: Sequence[Dataset]) -> None:
-    """Archive every dataset, so one failure cannot strand the rest, and report the ones that failed.
-
-    Raising here turns a leaked dataset into a visible teardown error rather than a silent one left on the
-    stack for someone to find later.
-    """
-    failures = []
-    for dataset in datasets:
-        try:
-            dataset.archive()
-        except Exception as error:  # noqa: BLE001 — teardown reports every failure rather than stopping at one
-            failures.append(f"{dataset.rid}: {error!r}")
-    if failures:
-        raise RuntimeError("failed to archive e2e datasets: " + "; ".join(failures))
 
 
 def _export_frame(
@@ -119,36 +101,15 @@ def _assert_temperatures(
 
 
 @pytest.fixture(scope="session")
-def tagged_datasets(client: NominalClient, csv_data: bytes, csv_data2: bytes) -> Iterator[tuple[Dataset, Dataset]]:
+def tagged_datasets(default_backed_datasets: DefaultBackedDatasets) -> tuple[Dataset, Dataset]:
     """Two ingested datasets carrying `vehicle=A` and `vehicle=B` respectively, over disjoint time ranges."""
-    datasets: list[Dataset] = []
-    try:
-        for vehicle, data in (("A", csv_data), ("B", csv_data2)):
-            dataset = client.create_dataset(f"derived-input-{vehicle.lower()}-{uuid4().hex[:8]}")
-            # Registered before the ingest it might not survive: a dataset that fails to ingest still exists.
-            datasets.append(dataset)
-            dataset_file = dataset.add_from_io(
-                BytesIO(data), "timestamp", "iso_8601", tags={"vehicle": vehicle}
-            ).poll_until_ingestion_completed(interval=POLL_INTERVAL)
-            assert dataset_file.ingest_status == IngestStatus.SUCCESS
-        yield datasets[0], datasets[1]
-    finally:
-        _archive_all(datasets)
+    return default_backed_datasets.vehicle_a, default_backed_datasets.vehicle_b
 
 
 @pytest.fixture(scope="session")
-def mixed_dataset(client: NominalClient, csv_data: bytes, csv_data2: bytes) -> Iterator[Dataset]:
+def mixed_dataset(default_backed_datasets: DefaultBackedDatasets) -> Dataset:
     """One dataset holding both tag values, so filtering it proves series selection rather than input exclusion."""
-    dataset = client.create_dataset(f"derived-input-mixed-{uuid4().hex[:8]}")
-    try:
-        for vehicle, data in (("A", csv_data), ("B", csv_data2)):
-            dataset_file = dataset.add_from_io(
-                BytesIO(data), "timestamp", "iso_8601", tags={"vehicle": vehicle}
-            ).poll_until_ingestion_completed(interval=POLL_INTERVAL)
-            assert dataset_file.ingest_status == IngestStatus.SUCCESS
-        yield dataset
-    finally:
-        _archive_all([dataset])
+    return default_backed_datasets.mixed_vehicles
 
 
 def test_create_derived_dataset_with_inputs(
