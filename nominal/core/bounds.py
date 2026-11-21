@@ -6,6 +6,7 @@ from typing import Self
 from nominal_api import datasource, scout_catalog
 
 from nominal.ts import (
+    IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
     _SecondsNanos,
 )
@@ -17,6 +18,11 @@ class Bounds:
 
     start: IntegralNanosecondsUTC
     end: IntegralNanosecondsUTC
+
+    @property
+    def duration(self) -> IntegralNanosecondsDuration:
+        """Length of the interval, in nanoseconds."""
+        return self.end - self.start
 
     @classmethod
     def _from_conjure(cls, bounds: scout_catalog.Bounds) -> Self:
