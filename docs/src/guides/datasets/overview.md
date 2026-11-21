@@ -43,7 +43,7 @@ Keep channel names, types and units the same across files.
 | CSV, Parquet | {py:meth}`~nominal.core.Dataset.add_tabular_data` | [CSV](/guides/datasets/csv.md) |
 | Journal JSON logs | {py:meth}`~nominal.core.Dataset.add_journal_json` | [Journal JSON](/guides/datasets/journal-json.md) |
 | HDF5 | convert, then {py:meth}`~nominal.core.Dataset.add_tabular_data` | [HDF5](/guides/datasets/hdf-5.md) |
-| PX4 ULog | convert, then {py:meth}`~nominal.core.Dataset.add_tabular_data` | [PX4](/guides/datasets/px-4.md) |
+| PX4 ULog | native PX4 ULog extractor with {py:meth}`~nominal.core.Dataset.add_containerized` | [PX4](/guides/datasets/px-4.md) |
 | Avro streams | {py:meth}`~nominal.core.Dataset.add_avro_stream` | [Avro streams](/guides/datasets/avro-streams.md) |
 | MCAP | {py:meth}`~nominal.core.Dataset.add_mcap` | [MCAP video ingest](/guides/video/mcap-video-ingest.md) |
 | Video | {py:meth}`~nominal.core.Dataset.add_video` | [Video ingest](/guides/video/video-ingest.md) |
