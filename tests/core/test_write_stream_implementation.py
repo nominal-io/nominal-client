@@ -378,3 +378,24 @@ def test_experimental_context_exit_drains_queued_batches(
             )
 
     assert sorted(written_points) == [(1_700_000_000, index, float(index)) for index in range(4)]
+
+
+@pytest.mark.parametrize("session_name", ["engine-test-stand", None], ids=["named", "unnamed"])
+def test_python_stream_sends_session_name_only_when_given(
+    mock_dataset: Dataset, mock_clients: MagicMock, session_name: str | None
+):
+    """A session name reaches the write request, and omitting it leaves the field unset."""
+    with mock_dataset.get_write_stream(batch_size=1, implementation="python", session_name=session_name) as stream:
+        stream.enqueue("temperature", datetime(2025, 1, 1, tzinfo=UTC), 42.0)
+
+    request = WriteRequestNominal.FromString(mock_clients.proto_write.write_nominal_batches.call_args.kwargs["request"])
+    assert request.HasField("session_name") is (session_name is not None)
+    assert request.session_name == (session_name or "")
+
+
+@pytest.mark.parametrize("implementation", [None, "rust", "experimental"])
+@pytest.mark.filterwarnings("ignore:implementation='experimental' is deprecated:UserWarning")
+def test_session_name_requires_the_python_backend(mock_dataset: Dataset, implementation: str | None):
+    """A session name is refused, not dropped, by backends that cannot send it."""
+    with pytest.raises(ValueError, match="pass implementation='python'"):
+        mock_dataset.get_write_stream(implementation=implementation, session_name="engine-test-stand")  # type: ignore[call-overload]

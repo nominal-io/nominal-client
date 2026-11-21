@@ -27,9 +27,15 @@ def create_dataset_stream(
     log_level: str | None,
     num_workers: int | None,
     track_metrics: bool,
+    session_name: str | None,
 ) -> DataStream:
     """Select and construct a dataset stream, preserving legacy backend options."""
     requested = _resolve_implementation(implementation, data_format)
+
+    # Only the python backend can send a session name. Selecting it automatically would trade away
+    # rust throughput without the caller asking, and dropping the name would misattribute the data.
+    if session_name is not None and requested != "python":
+        raise ValueError("`session_name` is supported only by the python backend: pass implementation='python'")
 
     rust_only_options = [
         key
@@ -107,6 +113,7 @@ def create_dataset_stream(
             nominal_data_source_rid=dataset_rid,
             auth_header=clients.auth_header,
             proto_write=clients.proto_write,
+            session_name=session_name,
         ),
     )
 

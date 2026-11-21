@@ -1662,6 +1662,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         batch_size: int = 250_000,
         max_wait: timedelta = timedelta(seconds=0.25),
         implementation: Literal["python", "json", "protobuf", "experimental"] = ...,
+        *,
+        session_name: str | None = None,
     ) -> DataStream: ...
 
     @overload
@@ -1684,6 +1686,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         max_wait: timedelta = timedelta(seconds=0.25),
         *,
         data_format: Literal["python", "json", "protobuf", "experimental"],
+        session_name: str | None = None,
     ) -> DataStream: ...
 
     @warn_on_deprecated_argument(
@@ -1702,6 +1705,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         track_metrics: bool = False,
         *,
         data_format: Literal["python", "rust", "json", "protobuf", "experimental", "rust_experimental"] | None = None,
+        session_name: str | None = None,
     ) -> DataStream:
         """Stream to write timeseries data to a datasource.
 
@@ -1749,6 +1753,15 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
 
                 **Note:** Supported only by the Rust backend.
             data_format: Deprecated name for `implementation`. Passing both is an error.
+            session_name: Name recorded as the source of the streaming session this stream's data is
+                attributed to. Nominal starts a session on the first write and keeps one in-progress
+                session per name on a dataset, so streams sharing a name share a session. When omitted,
+                data goes to the dataset's unnamed session.
+
+                **Note:** Nominal completes a session once its writes stop or it reaches its maximum
+                age. Writing with the same name afterwards starts a new session.
+
+                **Note:** Supported only by the Python backend, and requires ``implementation='python'``.
 
         Returns:
             Write stream object configured to send data to nominal. This may be used as a context manager
@@ -1756,7 +1769,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             manager, should be explicitly `close()`-ed once no longer needed.
 
         Raises:
-            ValueError: both `implementation` and `data_format` were given, or the implementation is unknown.
+            ValueError: both `implementation` and `data_format` were given, the implementation is unknown,
+                or `session_name` was given without ``implementation='python'``.
             ImportError: `nominal-streaming` is not installed and rust streaming was asked for, either
                 explicitly via `implementation` or implicitly by passing a rust-only argument.
         """
@@ -1771,6 +1785,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             log_level=log_level,
             num_workers=num_workers,
             track_metrics=track_metrics,
+            session_name=session_name,
         )
 
     def search_channels(

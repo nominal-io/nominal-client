@@ -134,8 +134,11 @@ def make_points_proto(api_batch: Sequence[DataItem]) -> Points:
             raise ValueError(f"Unsupported point type: {point_type}")
 
 
-def create_write_request(batch: Sequence[DataItem]) -> WriteRequestNominal:
-    """Create a WriteRequestNominal from batches of items."""
+def create_write_request(batch: Sequence[DataItem], session_name: str | None = None) -> WriteRequestNominal:
+    """Create a WriteRequestNominal from batches of items.
+
+    `session_name` names the streaming session the write is attributed to; None leaves the field unset.
+    """
     api_batched = groupby(sorted(batch, key=BatchItem.sort_key), key=BatchItem.sort_key)
     api_batches = [list(api_batch) for _, api_batch in api_batched]
     return WriteRequestNominal(
@@ -146,7 +149,8 @@ def create_write_request(batch: Sequence[DataItem]) -> WriteRequestNominal:
                 tags=api_batch[0].tags or {},
             )
             for api_batch in api_batches
-        ]
+        ],
+        session_name=session_name,
     )
 
 
@@ -155,12 +159,13 @@ def process_batch(
     nominal_data_source_rid: str | None,
     auth_header: str,
     proto_write: ProtoWriteService,
+    session_name: str | None = None,
 ) -> None:
     """Process a batch of data items (scalars or arrays) to write."""
     if nominal_data_source_rid is None:
         raise ValueError("Writing not implemented for this connection type")
 
-    request = create_write_request(batch)
+    request = create_write_request(batch, session_name)
 
     proto_write.write_nominal_batches(
         auth_header=auth_header,
