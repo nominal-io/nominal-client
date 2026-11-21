@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 from nominal_api import api, ingest_api, scout_catalog
 
+from nominal.core.bounds import Bounds
 from nominal.core.dataset_file import DatasetFile, IngestStatus
 from nominal.core.ingestion_job import IngestionJob, IngestionJobStatus
 from nominal.exceptions import NominalIngestFailed, NominalIngestTimeout
@@ -44,9 +45,12 @@ def _job_bean(**overrides: object) -> ingest_api.IngestJob:
     return ingest_api.IngestJob(**kwargs)
 
 
-def _file_bean(file_id: str, ingest_status: api.IngestStatusV2) -> scout_catalog.DatasetFile:
+def _file_bean(
+    file_id: str, ingest_status: api.IngestStatusV2, bounds: scout_catalog.Bounds | None = None
+) -> scout_catalog.DatasetFile:
     """Build a conjure DatasetFile bean as the catalog service would return it."""
     return scout_catalog.DatasetFile(
+        bounds=bounds,
         dataset_rid=DATASET_RID,
         handle=scout_catalog.Handle(s3=scout_catalog.S3Handle(bucket="test-bucket", key=file_id)),
         id=file_id,
@@ -119,6 +123,33 @@ def test_dataset_files_returns_every_page(mock_clients: MagicMock) -> None:
     )
 
     assert _ids(job.dataset_files()) == ["f1", "f2", "f3"]
+
+
+def test_file_bounds_spans_every_file_with_bounds(mock_clients: MagicMock) -> None:
+    """file_bounds() runs from the earliest file start to the latest file end, skipping files without bounds."""
+    job = IngestionJob._from_conjure(mock_clients, _job_bean())
+    _serve_listing(
+        mock_clients,
+        _page(
+            _file_bean("f1", SUCCESS, Bounds(start=2_000_000_005, end=3_000_000_000)._to_conjure()),
+            _file_bean("f2", IN_PROGRESS),
+            next_page="t2",
+        ),
+        _page(_file_bean("f3", SUCCESS, Bounds(start=1_500_000_000, end=2_500_000_007)._to_conjure())),
+    )
+
+    bounds = job.file_bounds()
+
+    assert bounds == Bounds(start=1_500_000_000, end=3_000_000_000)
+    assert bounds is not None and bounds.duration == 1_500_000_000
+
+
+def test_file_bounds_is_none_before_any_file_has_bounds(mock_clients: MagicMock) -> None:
+    """file_bounds() returns None rather than an empty range when no file has bounds yet."""
+    job = IngestionJob._from_conjure(mock_clients, _job_bean())
+    _serve_listing(mock_clients, _page(_file_bean("f1", IN_PROGRESS)))
+
+    assert job.file_bounds() is None
 
 
 def test_as_files_ingested_waits_for_files_registered_after_the_call(mock_clients: MagicMock) -> None:

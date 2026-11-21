@@ -10,6 +10,7 @@ from nominal_api import ingest_api
 
 from nominal.core._utils.api_tools import HasRid, RefreshableConjureMixin
 from nominal.core._utils.frontend_urls import ingestion_job_url
+from nominal.core.bounds import Bounds
 from nominal.core.dataset_file import (
     DatasetFile,
     _dataset_file_from_conjure,
@@ -214,6 +215,24 @@ class IngestionJob(HasRid, RefreshableConjureMixin[ingest_api.IngestJob]):
         the complete set, use `as_files_ingested()`.
         """
         return list(self._iter_dataset_files())
+
+    def file_bounds(self) -> Bounds | None:
+        """Return the time range spanned by the dataset files this ingest job has produced so far.
+
+        The range runs from the earliest file start to the latest file end. Files without bounds, such as
+        ones still ingesting or that failed, are left out. Like `dataset_files()`, this is a point-in-time
+        snapshot; wait on `as_files_ingested()` first to cover every file the job produces.
+
+        Returns:
+            The combined bounds, or None if no file has bounds yet.
+        """
+        file_bounds = [file.bounds for file in self._iter_dataset_files() if file.bounds is not None]
+        if not file_bounds:
+            return None
+        return Bounds(
+            start=min(bounds.start for bounds in file_bounds),
+            end=max(bounds.end for bounds in file_bounds),
+        )
 
     def _poll_for_new_files(self, seen_file_ids: AbstractSet[str]) -> tuple[bool, list[DatasetFile]]:
         """Refresh this job once, returning whether it can still produce files and any not yet seen.
