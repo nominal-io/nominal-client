@@ -66,15 +66,17 @@ The extractor writes one file per topic instance, such as `battery_status_0` and
 
 ## Create a run
 
-Once the files finish ingesting, create a run over the dataset's time range:
+Once the files finish ingesting, {py:meth}`~nominal.core.IngestionJob.file_bounds` gives the time range of this flight's topics.
+Create a run over it:
 
 ```python
-dataset.refresh()
-run = asset.create_run("PX4 quadrotor flight", start=dataset.bounds.start, end=dataset.bounds.end)
+bounds = job.file_bounds()
+run = asset.create_run("PX4 quadrotor flight", start=bounds.start, end=bounds.end)
 print(run.nominal_url)
 ```
 
 Upload each new flight to the same dataset and give it its own run.
+The job's bounds cover only that flight, even when the dataset holds earlier ones.
 Open runs in Nominal to chart topics side by side or compare flights in a [workbook](/guides/workbooks.md).
 
 ## Without the native extractor
