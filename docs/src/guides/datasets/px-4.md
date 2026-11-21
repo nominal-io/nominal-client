@@ -1,51 +1,28 @@
 ---
 myst:
   html_meta:
-    description: "Ingest PX4 ULog flight logs with Nominal's native PX4 ULog extractor, from the app or Python."
+    description: "Ingest PX4 ULog flight logs with Nominal's native PX4 ULog extractor from Python."
 ---
 
 # PX4 ULog
 
 {.lead}
-Ingest [PX4](https://px4.io/) [ULog](https://docs.px4.io/main/en/dev_log/ulog_file_format.html) flight logs (`.ulg` or `.ulog`) with Nominal's native PX4 ULog extractor, then review them as a [run](/guides/runs.md).
+Upload [PX4](https://px4.io/) [ULog](https://docs.px4.io/main/en/dev_log/ulog_file_format.html) flight logs (`.ulg` or `.ulog`) with Nominal's native PX4 ULog extractor and {py:meth}`~nominal.core.Dataset.add_containerized`, then review them as a [run](/guides/runs.md).
 
-We recommend the native extractor for PX4 logs.
-It reads the log in Nominal, writes one channel per logged field and places every sample on UTC time, so you don't convert files or align clocks yourself.
+The extractor reads the log in Nominal, writes one channel per logged field and places every sample on UTC time, so you don't convert files or align clocks yourself.
+Native extractors are [file extractors](/guides/extractors/overview.md) that Nominal builds and maintains; a workspace admin enables **PX4 ULog** once under **File extractors** › **New extractor** › **Native extractor**.
 
-## Enable the PX4 ULog extractor
-
-Native extractors are [file extractors](/guides/extractors/overview.md) that Nominal builds and maintains.
-A workspace admin enables one once per workspace:
-
-1. Open **File extractors** in the side navigation.
-1. Select **New extractor**, then **Native extractor**.
-1. Select **PX4 ULog** and enable it.
-
-The extractor then appears in the upload wizard and in {py:meth}`~nominal.core.NominalClient.search_containerized_extractors`.
-
-The extractor takes two optional parameters:
-
-| Parameter | Environment variable | Effect |
-| --- | --- | --- |
-| Topic filter | `TOPIC_FILTER` | Comma-separated topic names to convert, such as `vehicle_attitude,sensor_combined`. Converts every topic when unset. |
-| Include parameters | `INCLUDE_PARAMETERS` | When `true`, also writes the log's PX4 parameters as `PARM.<NAME>` channels, with their startup values and in-flight changes. |
-
-## Upload in the app
-
-1. Select **Upload data** to open the upload wizard.
-1. Choose the vehicle's asset as the destination.
-1. Add the `.ulg` file. If the wizard doesn't route it to the extractor, pick **PX4 ULog** from **Choose an extractor…**.
-1. Set **Topic filter** or **Include parameters** if you need them.
-1. Turn on **Create run** to open a run over the flight, then select **Upload**.
-
-See [Uploading data](https://docs.nominal.io/core/documentation/platform/data/uploading-data) for the rest of the wizard.
-
-## Upload with Python
+:::{tip}
+You can also upload PX4 logs without code: open **Upload data** in the app, add the `.ulg` file and pick **PX4 ULog** as the extractor.
+See [Uploading data](https://docs.nominal.io/core/documentation/platform/data/uploading-data).
+:::
 
 The example downloads a sample quadrotor log, which also needs `pip install huggingface_hub`.
 
 ```{include} /guides/_snippets/connect-the-client.md
 ```
+
+## Upload the log
 
 Find the extractor by file suffix and get or create a dataset on the vehicle's [asset](/guides/assets.md):
 
@@ -70,6 +47,11 @@ dataset = asset.get_or_create_dataset("px4")
 {py:meth}`~nominal.core.Dataset.add_containerized` uploads the log and returns an [ingest job](/guides/ingest/ingestion-jobs.md).
 The extractor's input is `INPUT_FILE`; `arguments` sets its optional parameters:
 
+| Argument | Effect |
+| --- | --- |
+| `TOPIC_FILTER` | Comma-separated topic names to convert, such as `vehicle_attitude,sensor_combined`. Converts every topic when unset. |
+| `INCLUDE_PARAMETERS` | When `true`, also writes the log's PX4 parameters as `PARM.<NAME>` channels, with their startup values and in-flight changes. |
+
 ```python
 job = dataset.add_containerized(
     extractor,
@@ -81,7 +63,10 @@ for file in job.as_files_ingested():
 ```
 
 The extractor writes one file per topic instance, such as `battery_status_0` and `battery_status_1`.
-Once they finish ingesting, create a run over the dataset's time range:
+
+## Create a run
+
+Once the files finish ingesting, create a run over the dataset's time range:
 
 ```python
 dataset.refresh()
