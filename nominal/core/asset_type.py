@@ -269,10 +269,12 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
         )
 
 
-def _search_type_rids(types: AssetType | str | Sequence[AssetType | str] | None) -> list[str]:
+def _search_type_rids(types: AssetType | str | Sequence[AssetType | str] | None) -> list[str] | None:
+    if types is None:
+        return None
     if isinstance(types, (AssetType, str)):
         return [rid_from_instance_or_string(types)]
-    return [rid_from_instance_or_string(kind) for kind in types or ()]
+    return [rid_from_instance_or_string(kind) for kind in types]
 
 
 def _get_asset_type(clients: AssetType._Clients, rid: str) -> asset_pb2.Type:
@@ -296,7 +298,7 @@ def _search_asset_types(
     search_text: str | None,
     workspace_rid: str | None,
     archive_status: ArchiveStatusFilter,
-    property_names: Sequence[str],
+    property_names: str | Sequence[str],
 ) -> Iterable[AssetType]:
     queries = []
     if search_text is not None:

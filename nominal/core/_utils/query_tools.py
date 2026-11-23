@@ -337,7 +337,7 @@ def create_search_checklists_query(
     author: str | None = None,
     assignee: str | None = None,
     workspace_rid: str | None = None,
-    asset_type_rids: Sequence[str] = (),
+    asset_type_rids: Sequence[str] | None = None,
 ) -> scout_checks_api.ChecklistSearchQuery:
     queries = [scout_checks_api.ChecklistSearchQuery(is_published=True)]
     if asset_type_rids:
@@ -443,7 +443,7 @@ def create_search_runs_query(  # noqa: PLR0912
     asset_rid: str | None = None,
     run_prefix: str | None = None,
     workspace_rid: str | None = None,
-    asset_type_rids: Sequence[str] = (),
+    asset_type_rids: Sequence[str] | None = None,
 ) -> run_service_pb2.SearchQuery:
     queries = []
     if asset_type_rids:

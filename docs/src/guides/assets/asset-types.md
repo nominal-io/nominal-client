@@ -210,4 +210,4 @@ checklists = client.search_checklists(asset_types=[pump_type, motor_type])
 A run matches when any associated asset has any requested type. A checklist
 matches when it declares every requested type. Both methods accept type objects
 or RIDs and combine the type filter with the other search arguments. An empty
-type list leaves these two searches unrestricted by type.
+type list matches no results. Omit the filter to search across all types.

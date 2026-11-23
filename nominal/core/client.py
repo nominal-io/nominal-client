@@ -869,7 +869,7 @@ class NominalClient:
                 returned runs on their names.
             asset: Filter runs associated with this asset or asset RID.
             asset_types: Match runs with at least one linked asset of any requested type. Supply up to 10 types
-                or type RIDs. An empty sequence leaves the search unrestricted by type.
+                or type RIDs. An empty sequence matches no runs.
             run_prefix: Filter by the stored run prefix, not a substring of the run name.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: Property equalities that must ALL match. String values match string properties;
@@ -900,6 +900,9 @@ class NominalClient:
             NominalConfigError: If the default workspace is requested but cannot be resolved.
             NominalError: If a search request fails.
         """
+        type_rids = _search_type_rids(asset_types)
+        if type_rids == []:
+            return []
         query = create_search_runs_query(
             start=start,
             end=end,
@@ -911,7 +914,7 @@ class NominalClient:
             created_after=created_after,
             created_before=created_before,
             asset_rid=None if asset is None else rid_from_instance_or_string(asset),
-            asset_type_rids=_search_type_rids(asset_types),
+            asset_type_rids=type_rids,
             run_prefix=run_prefix,
             workspace_rid=self._workspace_rid_for_search(workspace),
         )
@@ -1085,7 +1088,7 @@ class NominalClient:
             author: Author of checklists to search for
             assignee: Assignee of checklists to search for
             asset_types: Match checklists associated with every requested type or type RID. An empty sequence
-                leaves the search unrestricted by type.
+                matches no checklists.
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
@@ -1100,13 +1103,16 @@ class NominalClient:
         Returns:
             All checklists which match all of the provided conditions
         """
+        type_rids = _search_type_rids(asset_types)
+        if type_rids == []:
+            return []
         query = create_search_checklists_query(
             search_text=search_text,
             labels=labels,
             properties=properties,
             author=rid_from_instance_or_string(author) if author else None,
             assignee=rid_from_instance_or_string(assignee) if assignee else None,
-            asset_type_rids=_search_type_rids(asset_types),
+            asset_type_rids=type_rids,
             workspace_rid=self._workspace_rid_for_search(workspace),
         )
         return list(self._iter_search_checklists(query, archive_status))
@@ -1303,7 +1309,7 @@ class NominalClient:
         self,
         search_text: str | None = None,
         *,
-        property_names: Sequence[str] = (),
+        property_names: str | Sequence[str] = (),
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[AssetType]:
@@ -1355,18 +1361,18 @@ class NominalClient:
             Edges ordered by requested asset RID, then linked asset RID.
 
         Raises:
-            ValueError: If the link has no RID, the direction is invalid, or the
+            ValueError: If the link has no RID or the
                 server returns an unknown edge variant.
             NominalError: If traversal fails, including when a starting asset is inaccessible.
         """
         link_rid = link if isinstance(link, str) else link.rid
         if not link_rid:
             raise ValueError("Traversal requires the RID of a saved asset type link")
-        if direction not in ("forward", "inverse"):
-            raise ValueError(f"Unknown asset link direction: {direction!r}")
         reference = asset_pb2.LinkRef(
             link_rid=link_rid,
-            direction=asset_pb2.LINK_DIRECTION_FORWARD if direction == "forward" else asset_pb2.LINK_DIRECTION_INVERSE,
+            direction={"forward": asset_pb2.LINK_DIRECTION_FORWARD, "inverse": asset_pb2.LINK_DIRECTION_INVERSE}[
+                direction
+            ],
         )
         starts = (assets,) if isinstance(assets, (Asset, str)) else assets
         rids = sorted({rid_from_instance_or_string(asset) for asset in starts})
@@ -1535,7 +1541,7 @@ class NominalClient:
         search_text: str | None = None,
         *,
         labels: Sequence[str] | None = None,
-        types: Sequence[AssetType | str] | None = None,
+        types: AssetType | str | Sequence[AssetType | str] | None = None,
         properties: NominalProperties | None = None,
         exact_substring: str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
@@ -1578,7 +1584,7 @@ class NominalClient:
         """
         query = create_search_assets_query(
             search_text=search_text,
-            type_rids=None if types is None else [rid_from_instance_or_string(kind) for kind in types],
+            type_rids=_search_type_rids(types),
             labels=labels,
             properties=properties,
             exact_substring=exact_substring,

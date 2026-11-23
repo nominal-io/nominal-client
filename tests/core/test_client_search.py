@@ -48,6 +48,16 @@ def test_search_runs_asset_and_prefix_filters(use_object: bool) -> None:
     ]
 
 
+def test_empty_type_selection_matches_no_runs_or_checklists() -> None:
+    """An empty selection must never issue an unrestricted search."""
+    clients = MagicMock()
+    client = NominalClient(_clients=clients)
+    assert client.search_runs(asset_types=[]) == []
+    assert client.search_checklists(asset_types=[]) == []
+    clients.run.SearchRuns.assert_not_called()
+    clients.checklist.search.assert_not_called()
+
+
 def test_search_runs_with_multiple_asset_types() -> None:
     """Combine mixed asset type objects and RIDs into a single run filter alongside the run prefix."""
     clients = MagicMock()
