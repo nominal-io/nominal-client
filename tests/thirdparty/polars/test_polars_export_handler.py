@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-import contextlib
 import datetime
+import gzip
+import io
 from unittest.mock import MagicMock
 
+import polars as pl
 import pytest
 
 from nominal.core.channel import ChannelDataType
@@ -13,6 +15,7 @@ from nominal.protos.compute.v1 import (
     numeric_results_pb2,
     result_common_pb2,
 )
+from nominal.protos.exportjobs.v1 import export_jobs_pb2 as jobs
 from nominal.protos.types.time import time_pb2
 from nominal.thirdparty.polars.polars_export_handler import (
     PolarsExportHandler,
@@ -22,6 +25,7 @@ from nominal.thirdparty.polars.polars_export_handler import (
     _peak_points_per_second,
     _TimeRange,
 )
+from nominal.ts import Relative
 
 # Note: for new test coverage, prefer testing through `PolarsExportHandler._compute_export_jobs`
 # (with MagicMock on the client fixtures) rather than direct unit tests of private helpers like
@@ -373,14 +377,10 @@ def test_groups_include_zero_rate_channels(make_channel):
 # -- _compute_export_jobs --
 
 
-def test_compute_export_jobs_excludes_zero_and_none_pps_channels(
+def test_auto_sizing_keeps_channels_with_failed_rates(
     mock_client, mock_clients, make_channel, make_compute_result, make_numeric_response, make_series_count_response
 ):
-    """Channels whose rate estimate is 0.0 or None are excluded from export jobs.
-
-    These channels have nothing to export — either no data in range (0.0) or the rate
-    estimator errored (None). Including them would waste an export request per channel.
-    """
+    """Confirmed channels survive a failed estimate, while successful zero-rate results are excluded."""
     channels = [
         make_channel("known", ChannelDataType.DOUBLE),
         make_channel("none_rate", ChannelDataType.DOUBLE),
@@ -400,10 +400,10 @@ def test_compute_export_jobs_excludes_zero_and_none_pps_channels(
     )
 
     handler = PolarsExportHandler(client=mock_client)
-    jobs = handler._compute_export_jobs(channels, _TimeRange(0, TEN_SECONDS_NS), timestamp_type="epoch_seconds")
+    jobs = handler._compute_export_jobs(channels, _TimeRange(0, TEN_SECONDS_NS))
 
-    exported_names = {name for job_list in jobs.values() for job in job_list for name in job.channel_names}
-    assert exported_names == {"known"}
+    exported_names = {ch.name for job_list in jobs.values() for job in job_list for ch in job.channels}
+    assert exported_names == {"known", "none_rate"}
 
 
 def test_compute_export_jobs_handles_cross_datasource_name_collision(
@@ -428,16 +428,11 @@ def test_compute_export_jobs_handles_cross_datasource_name_collision(
     )
 
     handler = PolarsExportHandler(client=mock_client)
-    jobs = handler._compute_export_jobs(channels, _TimeRange(0, TEN_SECONDS_NS), timestamp_type="epoch_seconds")
+    jobs = handler._compute_export_jobs(channels, _TimeRange(0, TEN_SECONDS_NS))
 
-    jobs_by_ds: dict[str, list] = {}
-    for job_list in jobs.values():
-        for job in job_list:
-            jobs_by_ds.setdefault(job.datasource_rid, []).append(job)
-
-    assert set(jobs_by_ds.keys()) == {"ds-a", "ds-b"}
-    assert any(job.channel_types == {"temp": ChannelDataType.DOUBLE} for job in jobs_by_ds["ds-a"])
-    assert any(job.channel_types == {"temp": ChannelDataType.INT} for job in jobs_by_ds["ds-b"])
+    assert {
+        (ch.data_source, ch.name, ch.data_type) for group in jobs.values() for job in group for ch in job.channels
+    } == {("ds-a", "temp", ChannelDataType.DOUBLE), ("ds-b", "temp", ChannelDataType.INT)}
 
 
 def test_export_excludes_unsupported_channel_types(
@@ -449,24 +444,69 @@ def test_export_excludes_unsupported_channel_types(
         make_channel("logs", ChannelDataType.LOG),
         make_channel("mystery", ChannelDataType.UNKNOWN),
     ]
-    # Wire up just enough of the pipeline that it can reach (but not necessarily complete)
-    # the data-presence check — which is what we care about observing.
     mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
     mock_client._clients.compute.BatchComputeWithUnits.return_value = MagicMock(
         results=[make_compute_result(success=make_numeric_response([50, 100]))]
     )
-    mock_client._clients.dataexport.export_channel_data.return_value = MagicMock()
-    mock_client.get_dataset.return_value = MagicMock()
+    service = mock_client._clients.export_jobs
+    mock_client._clients.resolve_default_workspace_rid.return_value = "workspace"
+    service.CreateExportJob.return_value.export_job.export_id = "job-id"
+    service.GetExportJob.return_value.export_job = jobs.ExportJob(
+        export_id="job-id", status=jobs.EXPORT_JOB_STATUS_FAILED
+    )
 
-    handler = PolarsExportHandler(client=mock_client)
-    # The export() pipeline may error downstream on MagicMock CSV responses; we only need the
-    # type filter (which runs before any yield) to have executed.
-    with contextlib.suppress(Exception):
-        list(handler.export(channels, start=0, end=TEN_SECONDS_NS))
+    with pytest.raises(RuntimeError, match="job-id.*FAILED"):
+        list(PolarsExportHandler(mock_client).export(channels, start=0, end=TEN_SECONDS_NS, buckets=10))
 
-    # Only the DOUBLE channel reached the data-presence API — LOG/UNKNOWN were filtered upstream.
-    request = mock_clients.datasource.batch_get_series_count.call_args[0][1]
-    assert [req.channel for req in request.requests] == ["temp"]
+    request = service.CreateExportJob.call_args.args[0]
+    assert request.workspace_rid == "workspace"
+    definition = request.compute.definition
+    assert [col.name for col in definition.time_domain.columns] == ["temp"]
+    assert definition.resolution.bucket_count == 10
+    service.GetExportJob.assert_called_once_with(jobs.GetExportJobRequest(export_id="job-id"))
+
+
+def test_completed_compute_export_downloads_csv(
+    mock_client,
+    mock_clients,
+    make_channel,
+    make_series_count_response,
+    make_compute_result,
+    make_numeric_response,
+    monkeypatch,
+):
+    """A completed compute export yields a typed frame from the presigned file."""
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
+    mock_client._clients.compute.BatchComputeWithUnits.return_value = MagicMock(
+        results=[make_compute_result(success=make_numeric_response([50, 100]))]
+    )
+    service = mock_client._clients.export_jobs
+    mock_client._clients.resolve_default_workspace_rid.return_value = "workspace"
+    service.CreateExportJob.return_value.export_job.export_id = "job"
+    service.GetExportJob.side_effect = [
+        jobs.GetExportJobResponse(
+            export_job=jobs.ExportJob(export_id="job", status=jobs.EXPORT_JOB_STATUS_IN_PROGRESS)
+        ),
+        jobs.GetExportJobResponse(
+            export_job=jobs.ExportJob(
+                export_id="job",
+                status=jobs.EXPORT_JOB_STATUS_COMPLETED,
+                files=[jobs.ExportFile(download_url="https://storage.example/file")],
+            )
+        ),
+    ]
+    monkeypatch.setattr("time.sleep", lambda _: None)
+    response = MagicMock()
+    response.__enter__.return_value.status_code = 200
+    response.__enter__.return_value.raw = io.BytesIO(gzip.compress(b"timestamp,timestamp.1\n0,12.5\n"))
+    monkeypatch.setattr("requests.get", MagicMock(return_value=response))
+    frames = list(
+        PolarsExportHandler(mock_client).export(
+            [make_channel("timestamp")], start=0, end=TEN_SECONDS_NS, resolution=TEN_SECONDS_NS
+        )
+    )
+    assert len(frames) == 1
+    assert frames[0].equals(pl.DataFrame({"timestamp.1": [0.0], "timestamp": [12.5]}))
 
 
 # -- large_channels sub-slice path --
@@ -475,24 +515,7 @@ def test_export_excludes_unsupported_channel_types(
 def test_compute_export_jobs_subdivides_large_channel_into_sub_slices(
     mock_client, mock_clients, make_channel, make_compute_result, make_numeric_response, make_series_count_response
 ):
-    """Channels exceeding the per-group rate budget are split into one job per sub-slice.
-
-    Behavior verified:
-    * The high-PPS channel is routed to ``large_channels`` and subdivided into sub-slices of
-      width ``points_per_request / channel_rate`` seconds.
-    * Each sub-slice becomes its own ``_ExportJob`` with ``channel_names`` equal to the single
-      large channel's name and ``time_slice`` equal to the sub-slice range.
-    * All sub-slice jobs for one parent batch are keyed under that parent ``time_slice``.
-    * ``channel_types`` on each sub-slice job contains exactly one entry — this was a silent
-      bug fix: the pre-PR code reused the group-wide dict for single-channel sub-slices.
-    * Sub-slices tile the parent range with no gaps, no overlaps, and full coverage.
-    """
-    # Tune numbers so the math is clean:
-    #   * channel rate = 1000 pts across 10s = 100 PPS
-    #   * per-group budget = points_per_request / batch_duration_s = 500 / 10 = 50 PPS
-    #     -> 100 > 50, so firehose lands in large_channels
-    #   * sub-slice width = points_per_request / channel_rate = 500 / 100 = 5s
-    #   * 10s parent slice / 5s sub-slice = 2 sub-slices
+    """Explicit sample budgets split a high-rate channel into gapless, disjoint inclusive windows."""
     points_per_request = 500
     parent_range = _TimeRange(0, TEN_SECONDS_NS)
     batch_duration = datetime.timedelta(seconds=10)
@@ -504,9 +527,7 @@ def test_compute_export_jobs_subdivides_large_channel_into_sub_slices(
     )
 
     handler = PolarsExportHandler(client=mock_client, points_per_request=points_per_request)
-    jobs = handler._compute_export_jobs(
-        [channel], parent_range, timestamp_type="epoch_seconds", batch_duration=batch_duration
-    )
+    jobs = handler._compute_export_jobs([channel], parent_range, batch_duration=batch_duration)
 
     # All sub-slices roll up under a single parent time_slice.
     assert len(jobs) == 1
@@ -514,15 +535,81 @@ def test_compute_export_jobs_subdivides_large_channel_into_sub_slices(
     assert parent_slice == parent_range
     assert len(job_list) > 1
 
-    # Every sub-slice job is single-channel with the per-channel channel_types dict.
-    for job in job_list:
-        assert job.channel_names == ["firehose"]
-        assert job.channel_types == {"firehose": ChannelDataType.DOUBLE}
+    assert all(list(job.channels) == [channel] for job in job_list)
 
     # Sub-slices tile the parent: no gaps, no overlaps, full coverage, each narrower than parent.
     sub_ranges = sorted(job.time_slice for job in job_list)
     assert sub_ranges[0].start_time == parent_slice.start_time
     assert sub_ranges[-1].end_time == parent_slice.end_time
     for a, b in zip(sub_ranges, sub_ranges[1:]):
-        assert a.end_time == b.start_time
+        assert a.end_time + 1 == b.start_time
     assert all(r.duration_ns() < parent_slice.duration_ns() for r in sub_ranges)
+
+
+def test_raw_parquet_uses_typed_points_and_skips_rate_sampling(
+    mock_client, mock_clients, make_channel, make_series_count_response, make_enriched_dataset, monkeypatch
+):
+    """Raw exports preserve Int64 values, adjacent nanoseconds and exact-tag filters."""
+    start = 1_800_000_000_000_000_000
+    name = "count's"
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
+    mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
+    mock_client._clients.resolve_default_workspace_rid.return_value = "workspace"
+    service = mock_client._clients.export_jobs
+    service.CreateExportJob.return_value.export_job.export_id = "raw"
+    service.GetExportJob.return_value.export_job = jobs.ExportJob(
+        export_id="raw",
+        status=jobs.EXPORT_JOB_STATUS_COMPLETED,
+        files=[jobs.ExportFile(download_url="https://example.test/raw")],
+    )
+    payload = io.BytesIO()
+    pl.DataFrame({"ts": [start, start + 1], "channel": [name, name], "value": [2**53 + 1, 2**53 + 3]}).with_columns(
+        pl.col("ts").cast(pl.Datetime("ns"))
+    ).write_parquet(payload)
+    payload.seek(0)
+    response = MagicMock()
+    response.__enter__.return_value.status_code = 200
+    response.__enter__.return_value.raw = payload
+    monkeypatch.setattr("requests.get", MagicMock(return_value=response))
+    frames = list(
+        PolarsExportHandler(mock_client).export(
+            [make_channel(name, ChannelDataType.INT)],
+            start,
+            start + 10_000,
+            tags={"flight": "pilot's"},
+            batch_duration=datetime.timedelta(seconds=1),
+            timestamp_type=Relative("nanoseconds", start),
+        )
+    )
+    assert len(frames) == 1
+    assert frames[0].equals(pl.DataFrame({"timestamp": [0.0, 1.0], name: [2**53 + 1, 2**53 + 3]}))
+    request = service.CreateExportJob.call_args.args[0]
+    assert request.settings.file_format == jobs.EXPORT_FILE_FORMAT_PARQUET
+    assert "FROM points_int" in request.sql.query
+    assert "'count''s'" in request.sql.query
+    assert "tags['flight'] = 'pilot''s'" in request.sql.query
+    mock_client._clients.compute.BatchComputeWithUnits.assert_not_called()
+
+
+def test_raw_jobs_require_plain_dataset_and_single_series(
+    mock_client, mock_clients, make_channel, make_enriched_dataset, make_series_count_response
+):
+    """Use compute for ambiguous series and derived datasets even without decimation."""
+    channels = [
+        make_channel("raw", data_source="physical"),
+        make_channel("multi", data_source="physical"),
+        make_channel("derived", data_source="view"),
+    ]
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1, 2, 1])
+    mock_client._clients.catalog.get_enriched_datasets.return_value = [
+        make_enriched_dataset("physical"),
+        make_enriched_dataset("view", derived_definition=MagicMock()),
+    ]
+    plan = PolarsExportHandler(mock_client)._compute_export_jobs(
+        channels, _TimeRange(0, TEN_SECONDS_NS), batch_duration=datetime.timedelta(seconds=10)
+    )
+    assert {ch.name: job.raw_table for group in plan.values() for job in group for ch in job.channels} == {
+        "raw": "points_double",
+        "multi": None,
+        "derived": None,
+    }

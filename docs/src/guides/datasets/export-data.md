@@ -56,11 +56,14 @@ for i, df in enumerate(
 `start` and `end` are integer epoch nanoseconds.
 For data on the run's asset, get the dataset with {py:meth}`~nominal.core.Asset.get_dataset` instead, as in [Runs](/guides/runs.md#create-a-run-from-datasets).
 
-Some behavior to check before you rely on an export:
+For raw channels that each match one series in a stored dataset, the handler downloads typed Parquet and aligns channels in Polars. Decimated, derived, and multi-series exports use compute jobs. Both paths require async export jobs in the selected workspace.
+
+Set `batch_duration` when you know how much time each frame should cover. This skips the sample-rate queries used for automatic sizing unless you also set `points_per_request`. Each job can include up to 256 channels by default. The handler can process two adjacent time windows concurrently and yields them in order.
+
 
 - The handler is experimental. It exports `DOUBLE`, `INT` and `STRING` channels, and skips other types with a warning.
-- A batch that fails to download is logged and skipped, so check the logs and the row coverage.
-- Output timestamps are `Float64`, which can't tell apart every nanosecond at current epoch values.
+- The deployment needs export storage configured. Iteration raises if a job or its download fails. Batches yielded before the failure are still available.
+- The default epoch timestamps are `Float64`. Use `timestamp_type="iso_8601"` for UTC datetimes with nanosecond precision.
 - Batches outer-join channels on timestamp by default, so missing values are nulls. Pass `join_batches=False` for one frame per channel group.
 
 ## Filter by tags
