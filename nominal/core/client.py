@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Mapping, Self, Sequence, overload
+from typing import BinaryIO, Iterable, Literal, Mapping, Self, Sequence, overload
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
@@ -19,6 +19,7 @@ from nominal_api import (
 )
 from typing_extensions import deprecated
 
+from nominal._utils.iterator_tools import batched
 from nominal.config import NominalConfig, _config
 from nominal.core import _display
 from nominal.core._checklist_types import Priority
@@ -65,7 +66,17 @@ from nominal.core._utils.query_tools import (
     create_search_workbook_templates_query,
 )
 from nominal.core.asset import Asset, _get_asset, _get_assets
-from nominal.core.asset_type import AssetType, AssetTypeProperty, _get_asset_type, _search_asset_types
+from nominal.core.asset_links import ResolvedAssetLink, UnresolvedAssetLink, _traverse_link_batch
+from nominal.core.asset_type import (
+    AssetType,
+    AssetTypeLink,
+    AssetTypeProperty,
+    AssetTypeSeriesType,
+    _data_requirements_to_proto,
+    _get_asset_type,
+    _search_asset_types,
+    _search_type_rids,
+)
 from nominal.core.attachment import Attachment, _get_attachment, _get_attachments
 from nominal.core.checklist import Checklist
 from nominal.core.container_image import (
@@ -829,39 +840,6 @@ class NominalClient:
         response = _get_run(self._clients.run, rid)
         return Run._from_proto(self._clients, response)
 
-    def _iter_search_runs(
-        self,
-        start: str | datetime | IntegralNanosecondsUTC | None,
-        end: str | datetime | IntegralNanosecondsUTC | None,
-        name_substring: str | None,
-        labels: Sequence[str] | None,
-        properties: NominalProperties | None,
-        exact_match: str | None,
-        search_text: str | None,
-        created_after: str | datetime | IntegralNanosecondsUTC | None,
-        created_before: str | datetime | IntegralNanosecondsUTC | None,
-        asset_rid: str | None,
-        run_prefix: str | None,
-        workspace_rid: str | None,
-        archive_status: ArchiveStatusFilter,
-    ) -> Iterable[Run]:
-        query = create_search_runs_query(
-            start=start,
-            end=end,
-            name_substring=name_substring,
-            labels=labels,
-            properties=properties,
-            exact_match=exact_match,
-            search_text=search_text,
-            created_after=created_after,
-            created_before=created_before,
-            asset_rid=asset_rid,
-            run_prefix=run_prefix,
-            workspace_rid=workspace_rid,
-        )
-        for run in search_runs_paginated(self._clients.run, query, archive_status):
-            yield Run._from_proto(self._clients, run)
-
     def search_runs(
         self,
         start: str | datetime | IntegralNanosecondsUTC | None = None,
@@ -869,6 +847,7 @@ class NominalClient:
         name_substring: str | None = None,
         *,
         asset: Asset | str | None = None,
+        asset_types: AssetType | str | Sequence[AssetType | str] | None = None,
         run_prefix: str | None = None,
         labels: Sequence[str] | None = None,
         properties: NominalProperties | None = None,
@@ -889,6 +868,8 @@ class NominalClient:
                 of the run's name, description, labels, or properties. For name-only matching, filter the
                 returned runs on their names.
             asset: Filter runs associated with this asset or asset RID.
+            asset_types: Match runs with at least one linked asset of any requested type. Supply up to 10 types
+                or type RIDs. An empty sequence leaves the search unrestricted by type.
             run_prefix: Filter by the stored run prefix, not a substring of the run name.
             labels: A sequence of labels that must ALL be present on a run to be included.
             properties: Property equalities that must ALL match. String values match string properties;
@@ -919,23 +900,25 @@ class NominalClient:
             NominalConfigError: If the default workspace is requested but cannot be resolved.
             NominalError: If a search request fails.
         """
-        return list(
-            self._iter_search_runs(
-                start=start,
-                end=end,
-                name_substring=name_substring,
-                labels=labels,
-                properties=properties,
-                exact_match=exact_match,
-                search_text=search_text,
-                created_after=created_after,
-                created_before=created_before,
-                asset_rid=None if asset is None else rid_from_instance_or_string(asset),
-                run_prefix=run_prefix,
-                workspace_rid=self._workspace_rid_for_search(workspace),
-                archive_status=archive_status,
-            )
+        query = create_search_runs_query(
+            start=start,
+            end=end,
+            name_substring=name_substring,
+            labels=labels,
+            properties=properties,
+            exact_match=exact_match,
+            search_text=search_text,
+            created_after=created_after,
+            created_before=created_before,
+            asset_rid=None if asset is None else rid_from_instance_or_string(asset),
+            asset_type_rids=_search_type_rids(asset_types),
+            run_prefix=run_prefix,
+            workspace_rid=self._workspace_rid_for_search(workspace),
         )
+        return [
+            Run._from_proto(self._clients, run)
+            for run in search_runs_paginated(self._clients.run, query, archive_status)
+        ]
 
     def create_dataset(
         self,
@@ -1089,6 +1072,7 @@ class NominalClient:
         assignee: User | str | None = None,
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         *,
+        asset_types: AssetType | str | Sequence[AssetType | str] | None = None,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[Checklist]:
         """Search for checklists meeting the specified filters.
@@ -1100,6 +1084,8 @@ class NominalClient:
             properties: A mapping of key-value pairs that must ALL be present on a checklist to be included.
             author: Author of checklists to search for
             assignee: Assignee of checklists to search for
+            asset_types: Match checklists associated with every requested type or type RID. An empty sequence
+                leaves the search unrestricted by type.
             workspace: Filters search to given workspace.
             archive_status: Filter by archive status. Defaults to NOT_ARCHIVED.
 
@@ -1120,6 +1106,7 @@ class NominalClient:
             properties=properties,
             author=rid_from_instance_or_string(author) if author else None,
             assignee=rid_from_instance_or_string(assignee) if assignee else None,
+            asset_type_rids=_search_type_rids(asset_types),
             workspace_rid=self._workspace_rid_for_search(workspace),
         )
         return list(self._iter_search_checklists(query, archive_status))
@@ -1271,6 +1258,8 @@ class NominalClient:
         properties: Mapping[str, AssetTypeProperty] | None = None,
         description: str | None = None,
         icon_name: str | None = None,
+        required_series: Mapping[str, AssetTypeSeriesType] | None = None,
+        outgoing_links: Sequence[AssetTypeLink] = (),
     ) -> AssetType:
         """Create an asset type in this client's default workspace.
 
@@ -1278,12 +1267,18 @@ class NominalClient:
         Do not repeat it in ``properties``, which defines other required or suggested
         string/numeric properties. Each call creates a new type; names are not identities.
 
+        Required series are matched by exact channel name and kind when the type
+        is attached to an asset. Each outgoing link references a string property
+        declared in ``properties`` and a target type in the same workspace.
+
         Raises:
             NominalConfigError: If no default workspace can be resolved.
             NominalError: If the definition is invalid or creation fails.
         """
         request = asset_pb2.CreateTypeRequest(
             name=name,
+            data_requirements=_data_requirements_to_proto(required_series),
+            links=[link._to_proto() for link in outgoing_links],
             primary_key=primary_key,
             description=description,
             icon_name=icon_name,
@@ -1299,7 +1294,7 @@ class NominalClient:
 
         Raises:
             NominalNotFoundError: If the type does not exist or is not accessible.
-            ValueError: If a property value type or requirement is unknown to this client.
+            ValueError: If the type contains an unsupported property rule, data requirement, series kind, or link.
             NominalError: If the lookup fails.
         """
         return AssetType._from_proto(self._clients, _get_asset_type(self._clients, rid))
@@ -1308,18 +1303,20 @@ class NominalClient:
         self,
         search_text: str | None = None,
         *,
+        property_names: Sequence[str] = (),
         workspace: WorkspaceSearchT | None = WorkspaceSearchType.DEFAULT,
         archive_status: ArchiveStatusFilter = ArchiveStatusFilter.NOT_ARCHIVED,
     ) -> Sequence[AssetType]:
         """Find asset types, newest first, across all result pages.
 
-        Search text and workspace filters are ANDed. By default, search active types
+        Each supplied name must occur in the additional property rules. The primary
+        key is separate. The search combines these names with the text and workspace
+        filters. By default, search active types
         in the client's default workspace. Use ``WorkspaceSearchType.ALL`` for all
         accessible workspaces, or provide a workspace object or RID.
 
         Raises:
-            ValueError: If any result has a property value type or requirement unknown
-                to this client. The entire search fails rather than returning partial results.
+            ValueError: If any result contains an unsupported property rule, data requirement, series kind, or link.
             NominalConfigError: If the default workspace cannot be resolved.
             NominalError: If the search fails.
         """
@@ -1329,8 +1326,55 @@ class NominalClient:
                 search_text,
                 self._workspace_rid_for_search(workspace),
                 archive_status,
+                property_names,
             )
         )
+
+    def traverse_asset_links(
+        self,
+        assets: Asset | str | Iterable[Asset | str],
+        link: AssetTypeLink | str,
+        *,
+        direction: Literal["forward", "inverse"] = "forward",
+    ) -> Sequence[ResolvedAssetLink | UnresolvedAssetLink]:
+        """Follow one asset-type link from one or more assets, across all result pages.
+
+        Forward traversal follows the source property to an active target. If its
+        value matches no visible target, the edge retains the original value,
+        including an empty string. A missing property produces no edge. Inverse
+        traversal returns visible active sources that point to the requested assets.
+
+        Args:
+            assets: Starting assets or RIDs. Archived assets can be starting points.
+                Duplicate RIDs are traversed once. Empty input returns an empty list.
+            link: Link RID or a link from a saved asset type definition.
+            direction: Follow the link from source to target (forward) or target to
+                source (inverse).
+
+        Returns:
+            Edges ordered by requested asset RID, then linked asset RID.
+
+        Raises:
+            ValueError: If the link has no RID, the direction is invalid, or the
+                server returns an unknown edge variant.
+            NominalError: If traversal fails, including when a starting asset is inaccessible.
+        """
+        link_rid = link if isinstance(link, str) else link.rid
+        if not link_rid:
+            raise ValueError("Traversal requires the RID of a saved asset type link")
+        if direction not in ("forward", "inverse"):
+            raise ValueError(f"Unknown asset link direction: {direction!r}")
+        reference = asset_pb2.LinkRef(
+            link_rid=link_rid,
+            direction=asset_pb2.LINK_DIRECTION_FORWARD if direction == "forward" else asset_pb2.LINK_DIRECTION_INVERSE,
+        )
+        starts = (assets,) if isinstance(assets, (Asset, str)) else assets
+        rids = sorted({rid_from_instance_or_string(asset) for asset in starts})
+        return [
+            edge
+            for batch in batched(rids, 1000)
+            for edge in _traverse_link_batch(self._clients.assets, reference, batch)
+        ]
 
     def create_asset(
         self,

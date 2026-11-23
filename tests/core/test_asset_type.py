@@ -1,10 +1,13 @@
+from dataclasses import replace
 from unittest.mock import MagicMock
 
+import grpc
 import pytest
 
 from nominal.core import AssetType, AssetTypeProperty, AssetTypePropertyValueType, NominalClient
 from nominal.core._utils.query_tools import ArchiveStatusFilter
-from nominal.exceptions import NominalNotFoundError
+from nominal.core.asset_type import AssetTypeLink, AssetTypeSeriesType
+from nominal.exceptions import NominalFailedPreconditionError, NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.types import types_pb2
 
@@ -61,7 +64,7 @@ def test_search_types_paginates_and_scopes_query() -> None:
         asset_pb2.SearchTypesResponse(results=[asset_pb2.Type(rid="b")]),
     ]
     result = NominalClient(_clients=clients).search_asset_types(
-        "Pump", workspace="workspace-1", archive_status=ArchiveStatusFilter.ANY
+        "Pump", property_names=["Power", "model"], workspace="workspace-1", archive_status=ArchiveStatusFilter.ANY
     )
     assert [t.rid for t in result] == ["a", "b"]
     first, second = [call.args[0] for call in clients.assets.SearchTypes.call_args_list]
@@ -71,6 +74,8 @@ def test_search_types_paginates_and_scopes_query() -> None:
         assert list(getattr(request.query, "and").queries) == [
             asset_pb2.SearchTypesQuery(search_text="Pump"),
             asset_pb2.SearchTypesQuery(workspace="workspace-1"),
+            asset_pb2.SearchTypesQuery(property="Power"),
+            asset_pb2.SearchTypesQuery(property="model"),
         ]
         assert set(request.archived_statuses.archived_statuses) == {
             types_pb2.ARCHIVED,
@@ -116,3 +121,105 @@ def test_unknown_property_rule_is_not_silently_weakened() -> None:
         AssetTypeProperty._from_proto(asset_pb2.PropertyConfig(value_type=99, requirement=asset_pb2.REQUIRED))
     with pytest.raises(ValueError, match="requirement"):
         AssetTypeProperty._from_proto(asset_pb2.PropertyConfig(value_type=asset_pb2.STRING, requirement=99))
+
+
+def test_series_requirement_replacement_distinguishes_never_set_and_cleared() -> None:
+    """Requirements use exact channel names, and an explicit clear survives a read."""
+    clients = MagicMock()
+    client = NominalClient(_clients=clients)
+    clients.resolve_default_workspace_rid.return_value = "workspace"
+    required = {"engine/RPM": AssetTypeSeriesType.NUMERIC, "events": AssetTypeSeriesType.LOG}
+    defined = asset_pb2.DataRequirements(
+        series=asset_pb2.SeriesRequirements(
+            series=[
+                asset_pb2.SeriesRequirement(name="engine/RPM", type=asset_pb2.SeriesRequirement.NUMERIC),
+                asset_pb2.SeriesRequirement(name="events", type=asset_pb2.SeriesRequirement.LOG),
+            ]
+        )
+    )
+    raw = asset_pb2.Type(rid="kind", data_requirements=defined)
+    clients.assets.CreateType.return_value = asset_pb2.CreateTypeResponse(type=raw)
+    kind = client.create_asset_type("Engine", primary_key="serial", required_series=required)
+    assert clients.assets.CreateType.call_args.args[0].data_requirements == defined
+    assert kind.required_series == required
+    assert AssetType._from_proto(clients, asset_pb2.Type(rid="legacy")).required_series is None
+
+    clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(type=raw)
+    kind.update(name="Renamed")
+    assert not clients.assets.UpdateType.call_args.args[0].HasField("data_requirements")
+
+    empty = asset_pb2.DataRequirements(series=asset_pb2.SeriesRequirements())
+    clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(
+        type=asset_pb2.Type(rid="kind", data_requirements=empty)
+    )
+    kind.update(required_series={})
+    assert clients.assets.UpdateType.call_args.args[0].data_requirements == empty
+    assert kind.required_series == {}
+
+
+def test_link_definitions_keep_identity_when_relabelled_and_clear_independently() -> None:
+    """The source owns each link, including when the target sees it as incoming."""
+    clients = MagicMock()
+    client = NominalClient(_clients=clients)
+    clients.resolve_default_workspace_rid.return_value = "workspace"
+    new_link = AssetTypeLink(target_type_rid="engine", source_property="engine_serial", inverse_label="Vehicles")
+    raw = asset_pb2.LinkDefinition(
+        target_type_rid="engine", direct=asset_pb2.DirectLink(source_property="engine_serial"), inverse_label="Vehicles"
+    )
+    persisted = asset_pb2.LinkDefinition(rid="link", source_type_rid="vehicle")
+    persisted.MergeFrom(raw)
+    clients.assets.CreateType.return_value = asset_pb2.CreateTypeResponse(
+        type=asset_pb2.Type(rid="vehicle", outgoing_links=[persisted])
+    )
+    source = client.create_asset_type(
+        "Vehicle", primary_key="id", properties={"engine_serial": AssetTypeProperty()}, outgoing_links=[new_link]
+    )
+    assert list(clients.assets.CreateType.call_args.args[0].links) == [raw]
+    target = AssetType._from_proto(clients, asset_pb2.Type(rid="engine", incoming_links=[persisted]))
+    assert source.outgoing_links == target.incoming_links == (replace(new_link, rid="link", source_type_rid="vehicle"),)
+    persisted.forward_label = "Engine"
+    clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(
+        type=asset_pb2.Type(rid="vehicle", outgoing_links=[persisted])
+    )
+    source.update(outgoing_links=[replace(source.outgoing_links[0], forward_label="Engine")])
+    changed = clients.assets.UpdateType.call_args.args[0].links.links[0]
+    assert changed.rid == "link"
+    assert changed.forward_label == "Engine"
+    assert not changed.HasField("source_type_rid")
+    assert source.outgoing_links[0].forward_label == "Engine"
+    clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(type=asset_pb2.Type(rid="vehicle"))
+    source.update(outgoing_links=[])
+    assert source.outgoing_links == ()
+    assert clients.assets.UpdateType.call_args.args[0].HasField("links")
+    source.update(name="Car")
+    assert not clients.assets.UpdateType.call_args.args[0].HasField("links")
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        asset_pb2.Type(data_requirements=asset_pb2.DataRequirements()),
+        asset_pb2.Type(
+            data_requirements=asset_pb2.DataRequirements(
+                series=asset_pb2.SeriesRequirements(series=[asset_pb2.SeriesRequirement(name="speed", type=99)])
+            )
+        ),
+        asset_pb2.Type(outgoing_links=[asset_pb2.LinkDefinition(rid="future")]),
+    ],
+)
+def test_unknown_definition_cannot_be_accidentally_cleared(raw) -> None:
+    """Reading an unsupported definition fails before callers can overwrite its rules."""
+    with pytest.raises(ValueError):
+        AssetType._from_proto(MagicMock(), raw)
+
+
+def test_delete_type_reports_failed_precondition(fake_rpc_error) -> None:
+    """A checklist reference prevents deletion and remains a translated service error."""
+    clients = MagicMock()
+    clients.assets.DeleteType.side_effect = fake_rpc_error(
+        grpc.StatusCode.FAILED_PRECONDITION, "checklist references type"
+    )
+    kind = AssetType._from_proto(clients, asset_pb2.Type(rid="kind"))
+    with pytest.raises(NominalFailedPreconditionError, match="checklist references type"):
+        kind.delete()
+    assert clients.assets.DeleteType.call_args.args[0].type_rid == "kind"
