@@ -475,7 +475,22 @@ def _get_exported_timestamp_channel(channel_names: list[str]) -> str:
     return renamed_timestamp_col
 
 
-def _export_job(job: _ExportJob, client: NominalClient, time_col: str) -> pl.DataFrame:
+def _native_clock_frames(points: pl.DataFrame, names: Sequence[str], time_col: str) -> list[pl.DataFrame]:
+    """Group raw columns with identical nanosecond timestamps within this job and window."""
+    # SQL orders samples by time. Grouping on the entire timestamp list also
+    # distinguishes clocks with the same rate and endpoints but different interior samples.
+    channels = points.group_by("channel").agg(pl.col("ts").dt.epoch("ns"), "value")
+    clocks = channels.group_by("ts").agg("channel", "value")
+    frames = []
+    for i in range(clocks.height):
+        samples = clocks["value"][i]
+        values = {name: samples[j].alias(name) for j, name in enumerate(clocks["channel"][i])}
+        columns = [values[name] for name in names if name in values]
+        frames.append(pl.DataFrame([clocks["ts"][i].alias(time_col), *columns]))
+    return frames
+
+
+def _export_job(job: _ExportJob, client: NominalClient, time_col: str, join_batches: bool) -> list[pl.DataFrame]:
     names = [ch.name for ch in job.channels]
     workspace = client._clients.resolve_default_workspace_rid()
     start, end = job.time_slice.start_time, job.time_slice.end_time
@@ -490,7 +505,9 @@ def _export_job(job: _ExportJob, client: NominalClient, time_col: str) -> pl.Dat
         with download_export(client, request) as file:
             points = pl.read_parquet(file)
         if points.is_empty():
-            return pl.DataFrame()
+            return []
+        if not join_batches:
+            return _native_clock_frames(points, names, time_col)
         # Pivot on the caller-safe timestamp name so even channels named "ts" and "timestamp" work.
         df = points.with_columns(pl.col("ts").dt.epoch("ns").alias(time_col)).pivot(
             on="channel", index=time_col, values="value"
@@ -508,7 +525,7 @@ def _export_job(job: _ExportJob, client: NominalClient, time_col: str) -> pl.Dat
         with download_export(client, request) as file:
             df = pl.read_csv(file, schema_overrides={**csv_schema, "timestamp": pl.Int64}, raise_if_empty=False)
         if df.is_empty():
-            return pl.DataFrame()
+            return []
         renames = {"timestamp": time_col}
         if "timestamp" in schema:
             renames.update(
@@ -521,7 +538,7 @@ def _export_job(job: _ExportJob, client: NominalClient, time_col: str) -> pl.Dat
         df = df.rename(renames)
     df = df.with_columns(pl.lit(None, dtype=schema[name]).alias(name) for name in names if name not in df.columns)
     known = {time_col, *names}
-    return df.select(time_col, *names, *(col for col in df.columns if col not in known)).sort(time_col)
+    return [df.select(time_col, *names, *(col for col in df.columns if col not in known)).sort(time_col)]
 
 
 def _merge_dfs(dfs: Sequence[pl.DataFrame], time_col: str) -> pl.DataFrame:
@@ -544,8 +561,8 @@ class PolarsExportHandler:
     """Streams data out of Nominal into Polars DataFrames.
 
     Single-series raw channels use SQL jobs that write typed Parquet. Derived, external,
-    multi-series, and decimated channels use compute jobs. Each output window is joined
-    on integer nanosecond timestamps before conversion to the requested time format.
+    multi-series, and decimated channels use compute jobs. The default joins each output
+    window on integer nanosecond timestamps before conversion to the requested time format.
     """
 
     def __init__(
@@ -729,8 +746,9 @@ class PolarsExportHandler:
             resolution: Decimate each channel to samples at this interval (nanoseconds).
                 Mutually exclusive with `buckets`.
             join_batches: If True (default), each yielded DataFrame is the outer-joined merge of
-                all channel groups for a single time slice. If False, yields one DataFrame per
-                channel group without merging.
+                all channel groups for a single time slice. If False, raw SQL jobs yield frames
+                of channels with identical sample timestamps within that job and time slice.
+                Only sampled channels appear. Compute jobs yield their original channel groups.
 
         Yields:
             Polars DataFrames covering successive time slices of the export range.
@@ -776,24 +794,25 @@ class PolarsExportHandler:
         windows = iter(sorted(export_jobs))
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=self._num_workers)
         try:
-            pending: collections.deque[list[concurrent.futures.Future[pl.DataFrame]]] = collections.deque()
+            pending: collections.deque[list[concurrent.futures.Future[list[pl.DataFrame]]]] = collections.deque()
             while True:
                 while len(pending) < 2 and (window := next(windows, None)) is not None:
                     pending.append(
-                        [pool.submit(_export_job, job, self._client, time_column) for job in export_jobs[window]]
+                        [
+                            pool.submit(_export_job, job, self._client, time_column, join_batches)
+                            for job in export_jobs[window]
+                        ]
                     )
                 if not pending:
                     return
                 results: list[pl.DataFrame] = []
                 futures = pending.popleft()
                 for future in futures if join_batches else concurrent.futures.as_completed(futures):
-                    frame = future.result()
-                    if frame.is_empty():
-                        continue
                     if join_batches:
-                        results.append(frame)
+                        results.extend(future.result())
                     else:
-                        yield _format_time_col(frame, time_column, timestamp_type)
+                        for frame in future.result():
+                            yield _format_time_col(frame, time_column, timestamp_type)
                 if results:
                     yield _format_time_col(_merge_dfs(results, time_column), time_column, timestamp_type)
         finally:

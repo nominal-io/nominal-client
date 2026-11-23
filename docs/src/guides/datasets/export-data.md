@@ -64,7 +64,24 @@ Set `batch_duration` when you know how much time each frame should cover. This s
 - The handler is experimental. It exports `DOUBLE`, `INT` and `STRING` channels, and skips other types with a warning.
 - The deployment needs export storage configured. Iteration raises if a job or its download fails. Batches yielded before the failure are still available.
 - The default epoch timestamps are `Float64`. Use `timestamp_type="iso_8601"` for UTC datetimes with nanosecond precision.
-- Batches outer-join channels on timestamp by default, so missing values are nulls. Pass `join_batches=False` for one frame per channel group.
+- Batches outer-join channels on timestamp by default, so missing values are nulls.
+
+### Export channels with different sample rates
+
+For hundreds of slow channels alongside a few high-rate channels, pass all the channels in one call with `join_batches=False`. Within each raw SQL job and time window, channels with identical timestamps share a frame. A dropped sample or a clock offset can put two channels of the same nominal rate into separate frames. Each frame contains only channels with samples in that window. Compute jobs yield one frame per job.
+
+```python
+frames = PolarsExportHandler(client).export(
+    channels,
+    start=run.start,
+    end=end,
+    batch_duration=timedelta(minutes=1),
+    join_batches=False,
+    timestamp_type="iso_8601",
+)
+for i, frame in enumerate(frames):
+    frame.write_parquet(out / f"native_{i:04d}.parquet")
+```
 
 ## Filter by tags
 

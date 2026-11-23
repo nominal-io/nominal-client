@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import gzip
 import io
+from contextlib import contextmanager
 from unittest.mock import MagicMock
 
 import polars as pl
@@ -613,3 +614,52 @@ def test_raw_jobs_require_plain_dataset_and_single_series(
         "multi": None,
         "derived": None,
     }
+
+
+def test_unjoined_raw_frames_follow_exact_sample_times(
+    mock_client, mock_clients, make_channel, make_series_count_response, make_enriched_dataset, monkeypatch
+):
+    """One SQL download can contain shared, unequal, and partially coincident clocks."""
+    names = ["slow", "fast", "timestamp", "jitter", "empty"]
+    clocks = [[0, 4], [0, 1, 4], [0, 1, 4], [0, 2, 4], []]
+    points = (
+        pl.DataFrame(
+            [(ts, name, 2**53 + i + ts) for i, (name, clock) in enumerate(zip(names, clocks)) for ts in clock],
+            schema=["ts", "channel", "value"],
+            orient="row",
+        )
+        .sort("ts")
+        .with_columns(pl.col("ts").cast(pl.Datetime("ns")))
+    )
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1] * len(names))
+    mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
+    mock_client._clients.resolve_default_workspace_rid.return_value = "workspace"
+    requests = []
+
+    @contextmanager
+    def download(_, request):
+        requests.append(request)
+        payload = io.BytesIO()
+        points.write_parquet(payload)
+        payload.seek(0)
+        yield payload
+
+    monkeypatch.setattr("nominal.thirdparty.polars.polars_export_handler.download_export", download)
+    frames = list(
+        PolarsExportHandler(mock_client).export(
+            [make_channel(name, ChannelDataType.INT) for name in names],
+            0,
+            4,
+            batch_duration=datetime.timedelta(seconds=1),
+            join_batches=False,
+            timestamp_type=Relative("nanoseconds", 0),
+        )
+    )
+    assert len(requests) == 1
+    assert requests[0].HasField("sql")
+    assert {tuple(df.columns[1:]) for df in frames} == {("slow",), ("fast", "timestamp"), ("jitter",)}
+    for df in frames:
+        for name in df.columns[1:]:
+            i = names.index(name)
+            assert df["timestamp.1"].to_list() == clocks[i]
+            assert df[name].to_list() == [2**53 + i + ts for ts in clocks[i]]
