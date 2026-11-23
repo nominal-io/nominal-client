@@ -124,6 +124,21 @@ for file in job.as_files_ingested(timeout=timedelta(minutes=30)):
 To wait on files you already have, use {py:func}`~nominal.core.wait_for_files_to_ingest`.
 It returns `(done, not_done)` and doesn't see files the job adds later.
 
+## Get the job's time range
+
+Once the files finish, {py:meth}`~nominal.core.IngestionJob.file_bounds` returns the time range they span, from the earliest file start to the latest file end.
+Use it to create a [run](/guides/runs.md) over just this upload, even when the dataset holds earlier data:
+
+```python
+bounds = job.file_bounds()
+if bounds is not None:
+    run = asset.create_run("Flight 12", start=bounds.start, end=bounds.end)
+    print(bounds.duration / 1e9, "seconds")
+```
+
+Files that failed or are still ingesting have no bounds and are left out.
+`file_bounds` returns `None` when no file has bounds.
+
 ## Find jobs
 
 {py:meth}`~nominal.core.NominalClient.search_ingestion_jobs` filters by dataset, creator, status, text and start time:
