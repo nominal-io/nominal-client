@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from io import TextIOBase
 from pathlib import Path
-from typing import BinaryIO, Iterable, Literal, Mapping, Self, Sequence, overload
+from typing import BinaryIO, Iterable, Mapping, Self, Sequence, overload
 
 import certifi
 from conjure_python_client import ServiceConfiguration, SslConfiguration
@@ -19,7 +19,6 @@ from nominal_api import (
 )
 from typing_extensions import deprecated
 
-from nominal._utils.iterator_tools import batched
 from nominal.config import NominalConfig, _config
 from nominal.core import _display
 from nominal.core._checklist_types import Priority
@@ -66,10 +65,8 @@ from nominal.core._utils.query_tools import (
     create_search_workbook_templates_query,
 )
 from nominal.core.asset import Asset, _get_asset, _get_assets
-from nominal.core.asset_links import ResolvedAssetLink, UnresolvedAssetLink, _traverse_link_batch
 from nominal.core.asset_type import (
     AssetType,
-    AssetTypeLink,
     AssetTypeProperty,
     AssetTypeSeriesType,
     _data_requirements_to_proto,
@@ -1265,7 +1262,6 @@ class NominalClient:
         description: str | None = None,
         icon_name: str | None = None,
         required_series: Mapping[str, AssetTypeSeriesType] | None = None,
-        outgoing_links: Sequence[AssetTypeLink] = (),
     ) -> AssetType:
         """Create an asset type in this client's default workspace.
 
@@ -1274,8 +1270,7 @@ class NominalClient:
         string/numeric properties. Each call creates a new type; names are not identities.
 
         Required series are matched by exact channel name and kind when the type
-        is attached to an asset. Each outgoing link references a string property
-        declared in ``properties`` and a target type in the same workspace.
+        is attached to an asset.
 
         Raises:
             NominalConfigError: If no default workspace can be resolved.
@@ -1286,7 +1281,6 @@ class NominalClient:
         request = asset_pb2.CreateTypeRequest(
             name=name,
             data_requirements=_data_requirements_to_proto(required_series),
-            links=[link._to_proto() for link in outgoing_links],
             primary_key=primary_key,
             description=description,
             icon_name=icon_name,
@@ -1307,7 +1301,7 @@ class NominalClient:
 
         Raises:
             NominalNotFoundError: If the type does not exist or is not accessible.
-            ValueError: If the type contains an unsupported property rule, data requirement, series kind, or link.
+            ValueError: If the type contains an unsupported property rule, data requirement, or series kind.
             NominalError: If the lookup fails.
         """
         return AssetType._from_proto(self._clients, _get_asset_type(self._clients, rid))
@@ -1329,7 +1323,7 @@ class NominalClient:
         accessible workspaces, or provide a workspace object or RID.
 
         Raises:
-            ValueError: If any result contains an unsupported property rule, data requirement, series kind, or link.
+            ValueError: If any result contains an unsupported property rule, data requirement, or series kind.
             NominalConfigError: If the default workspace cannot be resolved.
             NominalError: If the search fails.
         """
@@ -1342,52 +1336,6 @@ class NominalClient:
                 property_names,
             )
         )
-
-    def traverse_asset_links(
-        self,
-        assets: Asset | str | Iterable[Asset | str],
-        link: AssetTypeLink | str,
-        *,
-        direction: Literal["forward", "inverse"] = "forward",
-    ) -> Sequence[ResolvedAssetLink | UnresolvedAssetLink]:
-        """Follow one asset-type link from one or more assets, across all result pages.
-
-        Forward traversal follows the source property to an active target. If its
-        value matches no visible target, the edge retains the original value,
-        including an empty string. A missing property produces no edge. Inverse
-        traversal returns visible active sources that point to the requested assets.
-
-        Args:
-            assets: Starting assets or RIDs. Archived assets can be starting points.
-                Duplicate RIDs are traversed once. Empty input returns an empty list.
-            link: Link RID or a link from a saved asset type definition.
-            direction: Follow the link from source to target (forward) or target to
-                source (inverse).
-
-        Returns:
-            Edges ordered by requested asset RID, then linked asset RID.
-
-        Raises:
-            ValueError: If the link has no RID or the
-                server returns an unknown edge variant.
-            NominalError: If traversal fails, including when a starting asset is inaccessible.
-        """
-        link_rid = link if isinstance(link, str) else link.rid
-        if not link_rid:
-            raise ValueError("Traversal requires the RID of a saved asset type link")
-        reference = asset_pb2.LinkRef(
-            link_rid=link_rid,
-            direction={"forward": asset_pb2.LINK_DIRECTION_FORWARD, "inverse": asset_pb2.LINK_DIRECTION_INVERSE}[
-                direction
-            ],
-        )
-        starts = (assets,) if isinstance(assets, (Asset, str)) else assets
-        rids = sorted({rid_from_instance_or_string(asset) for asset in starts})
-        return [
-            edge
-            for batch in batched(rids, 1000)
-            for edge in _traverse_link_batch(self._clients.assets, reference, batch)
-        ]
 
     def create_asset(
         self,

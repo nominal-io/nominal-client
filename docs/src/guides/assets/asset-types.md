@@ -169,44 +169,11 @@ Changing the type's required series leaves existing members in place. Omit
 `required_series` on an update to keep the current requirements, or pass `{}`
 to clear them all.
 
-## Link assets by identity
-
-A link definition belongs to the source type. In this example, each pump's
-`motor_serial` property identifies a motor by its primary key.
-
-```python
-from nominal.core import AssetTypeLink, ResolvedAssetLink
-
-motor_type = client.create_asset_type("Motor", primary_key="serial_number")
-pump_type.update(
-    properties={**pump_type.properties, "motor_serial": AssetTypeProperty()},
-    outgoing_links=[
-        *pump_type.outgoing_links,
-        AssetTypeLink(target_type_rid=motor_type.rid, source_property="motor_serial"),
-    ],
-)
-motor = client.create_asset("Motor M-01", types=[motor_type], properties={"serial_number": "M-01"})
-pump.update(properties={**pump.properties, "motor_serial": "M-01"})
-
-link = next(link for link in pump_type.outgoing_links if link.target_type_rid == motor_type.rid)
-for edge in client.traverse_asset_links([pump], link):
-    if isinstance(edge, ResolvedAssetLink):
-        print(edge.linked_asset_rid)
-    else:
-        print(f"No visible motor matches {edge.unresolved_value!r}")
-
-pumps_for_motor = client.traverse_asset_links([motor], link, direction="inverse")
-```
-
-Read `incoming_links` on the target type after refreshing it. Edit links on the
-source type. Supplying `outgoing_links` replaces its full list, so include the
-existing link objects you want to keep. An empty list removes all outgoing links.
-
 ## Find runs and checklists by asset type
 
 ```python
-runs = client.search_runs(asset_types=[pump_type, motor_type])
-checklists = client.search_checklists(asset_types=[pump_type, motor_type])
+runs = client.search_runs(asset_types=[pump_type])
+checklists = client.search_checklists(asset_types=[pump_type])
 ```
 
 A run matches when any associated asset has any requested type. A checklist

@@ -97,44 +97,6 @@ def _data_requirements_to_proto(
 
 
 @dataclass(frozen=True)
-class AssetTypeLink:
-    """Link a source string property to the primary key of a target asset type.
-
-    Omit ``rid`` when defining a new link. Saved links include their RID and
-    read-only source type RID. Labels name the relationship from either end.
-    """
-
-    target_type_rid: str
-    source_property: str
-    forward_label: str | None = None
-    inverse_label: str | None = None
-    rid: str | None = None
-    source_type_rid: str | None = None
-
-    def _to_proto(self) -> asset_pb2.LinkDefinition:
-        return asset_pb2.LinkDefinition(
-            rid=self.rid,
-            target_type_rid=self.target_type_rid,
-            forward_label=self.forward_label,
-            inverse_label=self.inverse_label,
-            direct=asset_pb2.DirectLink(source_property=self.source_property),
-        )
-
-    @classmethod
-    def _from_proto(cls, raw: asset_pb2.LinkDefinition) -> Self:
-        if raw.WhichOneof("kind") != "direct":
-            raise ValueError(f"Unknown asset-type link kind for link {raw.rid!r}")
-        return cls(
-            rid=raw.rid if raw.HasField("rid") else None,
-            source_type_rid=raw.source_type_rid if raw.HasField("source_type_rid") else None,
-            target_type_rid=raw.target_type_rid,
-            forward_label=raw.forward_label if raw.HasField("forward_label") else None,
-            inverse_label=raw.inverse_label if raw.HasField("inverse_label") else None,
-            source_property=raw.direct.source_property,
-        )
-
-
-@dataclass(frozen=True)
 class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
     """An asset identity definition and the property rules its members must satisfy.
 
@@ -142,9 +104,9 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
     assets of this type. Other property definitions are stored in ``properties``.
 
     Required series are checked when the type is attached. A type with no data
-    requirements ever set has ``required_series=None``. Incoming links are read-only.
+    requirements ever set has ``required_series=None``.
 
-    Reading an unsupported property rule, data requirement, series type, or link
+    Reading an unsupported property rule, data requirement, or series type
     raises ``ValueError``, including during search, refresh, or update.
     """
 
@@ -158,8 +120,6 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
     icon_name: str | None
     _clients: _Clients = field(repr=False)
     required_series: Mapping[str, AssetTypeSeriesType] | None = None
-    outgoing_links: tuple[AssetTypeLink, ...] = ()
-    incoming_links: tuple[AssetTypeLink, ...] = ()
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -183,7 +143,6 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
         properties: Mapping[str, AssetTypeProperty] | None = None,
         icon_name: str | None = None,
         required_series: Mapping[str, AssetTypeSeriesType] | None = None,
-        outgoing_links: Sequence[AssetTypeLink] | None = None,
     ) -> Self:
         """Replace supplied definition fields and refresh this instance in place.
 
@@ -193,8 +152,7 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
         members and primary-key renames once the type has memberships.
 
         Pass an empty mapping to clear required series. Existing members are
-        not rechecked. Supply the full outgoing link list to replace it, or an
-        empty list to clear it. Retain a link's RID to update its labels.
+        not rechecked.
 
         Raises:
             NominalError: If the definition is invalid or the update fails.
@@ -204,9 +162,6 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
         request = asset_pb2.UpdateTypeRequest(
             type_rid=self.rid,
             data_requirements=_data_requirements_to_proto(required_series),
-            links=None
-            if outgoing_links is None
-            else asset_pb2.LinkDefinitionList(links=[link._to_proto() for link in outgoing_links]),
             name=name,
             description=description,
             primary_key=primary_key,
@@ -260,8 +215,6 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
             )
         return cls(
             required_series=required_series,
-            outgoing_links=tuple(AssetTypeLink._from_proto(link) for link in raw.outgoing_links),
-            incoming_links=tuple(AssetTypeLink._from_proto(link) for link in raw.incoming_links),
             rid=raw.rid,
             name=raw.name,
             description=raw.description if raw.HasField("description") else None,
