@@ -137,24 +137,26 @@ def test_prep_lists_orphaned_datasets_as_standalone_datasets(tmp_path: Path) -> 
     migration = yaml.safe_load(output_path.read_text(encoding="utf-8"))["migration"]
     assert migration["source_asset_rids"] == [{"asset_rid": "asset"}]
     assert migration["standalone_dataset_rids"] == ["ds-orphan-a", "ds-orphan-b"]
+    assert migration["include_dataset_files"] is False
+    scoped.list_files.assert_not_called()
     # Only non-archived assets count, so a dataset whose only asset is archived is listed as orphaned.
     # The archived search only filters archived assets out of the assets reached through runs.
     assert client.search_assets.call_args_list == [call(), call(archive_status=ArchiveStatusFilter.ARCHIVED)]
 
 
-@pytest.mark.parametrize(("flags", "expected"), [([], False), (["--include-dataset-files"], True)])
-def test_prep_include_dataset_files_sets_config_and_counts_files(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture, flags: list[str], expected: bool
+def test_prep_include_dataset_files_counts_files_that_copy_migrates(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """`--include-dataset-files` counts files on asset and orphaned datasets and enables file copying."""
-    scoped = MagicMock(rid="ds-scoped")
+    """`--include-dataset-files` counts files on active asset and orphaned datasets and enables file copying."""
+    scoped = MagicMock(rid="ds-scoped", is_archived=False)
     scoped.list_files.return_value = [MagicMock(), MagicMock()]
-    orphan = MagicMock(rid="ds-orphan")
+    archived = MagicMock(rid="ds-archived", is_archived=True)
+    orphan = MagicMock(rid="ds-orphan", is_archived=False)
     orphan.list_files.return_value = [MagicMock()]
-    empty_orphan = MagicMock(rid="ds-empty")
+    empty_orphan = MagicMock(rid="ds-empty", is_archived=False)
     empty_orphan.list_files.return_value = []
     asset = MagicMock(rid="asset")
-    asset.list_datasets.return_value = [("scope", scoped)]
+    asset.list_datasets.return_value = [("scope", scoped), ("old", archived)]
     client = MagicMock()
     client.search_runs.return_value = []
     client.search_workbooks.return_value = []
@@ -177,7 +179,16 @@ def test_prep_include_dataset_files_sets_config_and_counts_files(
         ):
             result = CliRunner().invoke(
                 migration_cli.migrate_cmd,
-                ["prep", "--profile", "source", "--name", "prep", "--output", str(output_path), *flags],
+                [
+                    "prep",
+                    "--profile",
+                    "source",
+                    "--name",
+                    "prep",
+                    "--output",
+                    str(output_path),
+                    "--include-dataset-files",
+                ],
                 catch_exceptions=False,
             )
     finally:
@@ -185,10 +196,7 @@ def test_prep_include_dataset_files_sets_config_and_counts_files(
 
     assert result.exit_code == 0, result.output
     migration = yaml.safe_load(output_path.read_text(encoding="utf-8"))["migration"]
-    assert migration["include_dataset_files"] is expected
-    if expected:
-        assert "Dataset files: 3" in caplog.text
-        assert "Datasets with files: 2" in caplog.text
-    else:
-        scoped.list_files.assert_not_called()
-        orphan.list_files.assert_not_called()
+    assert migration["include_dataset_files"] is True
+    assert "Dataset files: 3" in caplog.text
+    assert "Datasets with files: 2" in caplog.text
+    archived.list_files.assert_not_called()

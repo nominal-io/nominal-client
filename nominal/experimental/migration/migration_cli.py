@@ -841,7 +841,9 @@ def prep(
         logger.info("    e.g. %s", rid)
 
     if include_dataset_files:
-        _log_dataset_file_counts([*datasets_with_assets.values(), *orphaned_datasets.values()])
+        # Copy skips archived datasets on an asset, so their files are not counted.
+        in_scope = [d for d in datasets_with_assets.values() if not d.is_archived]
+        _log_dataset_file_counts([*in_scope, *orphaned_datasets.values()])
 
     logger.info("Out-of-scope migration numbers:")
 
