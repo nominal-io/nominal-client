@@ -223,3 +223,28 @@ def test_delete_type_reports_failed_precondition(fake_rpc_error) -> None:
     with pytest.raises(NominalFailedPreconditionError, match="checklist references type"):
         kind.delete()
     assert clients.assets.DeleteType.call_args.args[0].type_rid == "kind"
+
+
+def test_unsupported_create_response_identifies_the_created_type() -> None:
+    """An unsupported response reports the RID callers need to recover the created type."""
+    clients = MagicMock()
+    clients.resolve_default_workspace_rid.return_value = "workspace"
+    clients.assets.CreateType.return_value = asset_pb2.CreateTypeResponse(
+        type=asset_pb2.Type(rid="created-rid", data_requirements=asset_pb2.DataRequirements())
+    )
+    with pytest.raises(ValueError, match="created-rid.*was created") as exc:
+        NominalClient(_clients=clients).create_asset_type("Pump", primary_key="serial")
+    assert isinstance(exc.value.__cause__, ValueError)
+
+
+def test_unsupported_update_response_leaves_previous_snapshot_intact() -> None:
+    """A successful write with an unreadable response keeps the prior local snapshot."""
+    clients = MagicMock()
+    kind = AssetType._from_proto(clients, asset_pb2.Type(rid="type-rid", name="Before"))
+    clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(
+        type=asset_pb2.Type(rid=kind.rid, name="After", incoming_links=[asset_pb2.LinkDefinition(rid="future")])
+    )
+    with pytest.raises(ValueError, match="type-rid.*was updated") as exc:
+        kind.update(name="After")
+    assert isinstance(exc.value.__cause__, ValueError)
+    assert kind.name == "Before"

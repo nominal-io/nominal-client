@@ -154,10 +154,12 @@ from nominal.core import AssetTypeSeriesType
 pump_type.update(required_series={"outlet_pressure": AssetTypeSeriesType.NUMERIC})
 ```
 
-For a new pump, attach a dataset containing the required series before assigning
-the type. The search for matching series respects the data scope's tag filters.
+For a new pump, replace the placeholder below with the RID of a dataset that
+contains `outlet_pressure`. Retrieve it before creating the asset, then attach
+it before assigning the type. The search for matching series respects the data scope's tag filters.
 
 ```python
+dataset = client.get_dataset("<dataset-rid>")
 pump = client.create_asset("Pump P-002", properties={"serial_number": "P-002", "model": "Centrifugal"})
 pump.add_dataset("telemetry", dataset)
 pump.update(types=[pump_type])

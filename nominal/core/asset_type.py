@@ -198,6 +198,8 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
 
         Raises:
             NominalError: If the definition is invalid or the update fails.
+            ValueError: If the update succeeded but the SDK could not read the returned definition.
+                This instance retains its previous snapshot.
         """
         request = asset_pb2.UpdateTypeRequest(
             type_rid=self.rid,
@@ -217,7 +219,12 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
         )
         with translate_grpc_errors():
             response = self._clients.assets.UpdateType(request)
-        return self._refresh_from_api(response.type)
+        try:
+            return self._refresh_from_api(response.type)
+        except ValueError as exc:
+            raise ValueError(
+                f"Asset type {self.rid!r} was updated, but the local snapshot could not be refreshed: {exc}"
+            ) from exc
 
     def delete(self) -> None:
         """Permanently delete this type and its incoming and outgoing link definitions.

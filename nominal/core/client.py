@@ -1280,6 +1280,8 @@ class NominalClient:
         Raises:
             NominalConfigError: If no default workspace can be resolved.
             NominalError: If the definition is invalid or creation fails.
+            ValueError: If creation succeeded but the SDK could not read the returned definition.
+                The error includes the new type RID for lookup with a compatible SDK.
         """
         request = asset_pb2.CreateTypeRequest(
             name=name,
@@ -1293,7 +1295,12 @@ class NominalClient:
         )
         with translate_grpc_errors():
             response = self._clients.assets.CreateType(request)
-        return AssetType._from_proto(self._clients, response.type)
+        try:
+            return AssetType._from_proto(self._clients, response.type)
+        except ValueError as exc:
+            raise ValueError(
+                f"Asset type {response.type.rid!r} was created, but its definition could not be read: {exc}"
+            ) from exc
 
     def get_asset_type(self, rid: str) -> AssetType:
         """Retrieve an asset type, including an archived type.
