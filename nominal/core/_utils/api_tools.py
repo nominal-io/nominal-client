@@ -3,7 +3,6 @@ from __future__ import annotations
 import abc
 import importlib.metadata
 import logging
-import os
 import platform
 import re
 import sys
@@ -26,6 +25,7 @@ from typing import (
 from nominal_api import scout_compute_api
 
 from nominal._utils.dataclass_tools import update_dataclass
+from nominal.core._utils.ai_agent import detect_ai_agent
 from nominal.protos.compute.v1 import constants_pb2, source_selection_pb2
 from nominal.protos.types import types_pb2
 
@@ -106,54 +106,13 @@ def label_update(labels: Iterable[str] | None) -> types_pb2.LabelUpdateWrapper |
     return None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels))
 
 
-# Variables an AI coding agent sets in the shells it runs commands in, mapped to the agent's slug. Drawn from
-# @vercel/detect-agent, laravel/agent-detector, and each agent's own source.
-_AGENT_ENV_VARS: Mapping[str, str] = {
-    "KILO_PID": "kilo-code",  # Kilo also sets OPENCODE, so it comes first.
-    "CLAUDECODE": "claude-code",
-    "CLAUDE_CODE": "claude-code",
-    "CODEX_THREAD_ID": "codex",
-    "CODEX_SANDBOX": "codex",
-    "CODEX_CI": "codex",
-    "CURSOR_AGENT": "cursor",
-    "GEMINI_CLI": "gemini",
-    "COPILOT_ALLOW_ALL": "github-copilot",
-    "OPENCODE": "opencode",
-    "OPENCODE_CLIENT": "opencode",
-    "CLINE_ACTIVE": "cline",
-    "ROO_ACTIVE": "roo-code",
-    "PI_CODING_AGENT": "pi",
-    "GOOSE_TERMINAL": "goose",
-    "QWEN_CODE": "qwen-code",
-    "CRUSH": "crush",
-    "AMP_CURRENT_THREAD_ID": "amp",
-    "KIRO_SESSION_ID": "kiro",
-    "JUNIE_SHIM_PATH": "junie",
-    "ANTIGRAVITY_AGENT": "antigravity",
-    "AUGMENT_AGENT": "augment",
-}
-_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
-_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 _USER_AGENT_TOKEN_DISALLOWED = re.compile(r"[^A-Za-z0-9._+-]")
 NO_AI_AGENT = "none"
 
 
-def detect_ai_agent(environ: Mapping[str, str] = os.environ) -> str:
-    """Returns the AI coding agent running this process as a user-agent token value, or "none" when there is none.
-
-    `AI_AGENT` (see agentsmd/agents.md#136) wins and names the agent; a false value such as `0` opts out. Otherwise a
-    known agent's own variable, then the older generic `AGENT`, mark the process as agent-run. The server normalizes
-    the name to an allowlist, so an approximate name here is fine.
-    """
-    ai_agent = environ.get("AI_AGENT", "").strip()
-    if ai_agent.lower() in _FALSE_VALUES:
-        return NO_AI_AGENT
-    name = ai_agent or next((agent for var, agent in _AGENT_ENV_VARS.items() if environ.get(var)), "")
-    if not name:
-        agent = environ.get("AGENT", "").strip()
-        if agent and agent.lower() not in _FALSE_VALUES:
-            name = "unknown" if agent.lower() in _TRUE_VALUES else agent
-    return _USER_AGENT_TOKEN_DISALLOWED.sub("_", name)[:64] or NO_AI_AGENT
+def _user_agent_token(value: str | None) -> str:
+    """Reduces a value to a single bounded user-agent token, or "none" when there is no value."""
+    return _USER_AGENT_TOKEN_DISALLOWED.sub("_", value or "")[:64] or NO_AI_AGENT
 
 
 def construct_user_agent_string() -> str:
@@ -165,7 +124,7 @@ def construct_user_agent_string() -> str:
         p = platform.platform()
         impl = sys.implementation
         py = platform.python_version()
-        agent = detect_ai_agent()
+        agent = _user_agent_token(detect_ai_agent())
         return f"{USER_AGENT_NAME}/{v} ({p}) {impl.name}/{py} ai-agent/{agent}"
     except Exception as e:
         # I believe all of the above are cross-platform, but just in-case...
