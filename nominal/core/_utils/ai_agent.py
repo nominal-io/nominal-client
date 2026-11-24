@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Mapping
+
+# Request header carrying the detected AI coding agent, or "none".
+AI_AGENT_HEADER = "X-Nominal-AI-Agent"
+NO_AI_AGENT = "none"
+_HEADER_VALUE_DISALLOWED = re.compile(r"[^A-Za-z0-9._+-]")
 
 # Variables an AI coding agent sets in the shells it runs commands in, mapped to the agent's slug. Drawn from
 # @vercel/detect-agent, laravel/agent-detector, and each agent's own source.
@@ -52,3 +58,8 @@ def detect_ai_agent(environ: Mapping[str, str] = os.environ) -> str | None:
     if not agent or agent.lower() in _FALSE_VALUES:
         return None
     return "unknown" if agent.lower() in _TRUE_VALUES else agent
+
+
+def ai_agent_header_value(environ: Mapping[str, str] = os.environ) -> str:
+    """Returns the detected agent as a bounded header token, or "none" when no agent was found."""
+    return _HEADER_VALUE_DISALLOWED.sub("_", detect_ai_agent(environ) or "")[:64] or NO_AI_AGENT

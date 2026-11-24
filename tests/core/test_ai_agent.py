@@ -1,6 +1,6 @@
 import pytest
 
-from nominal.core._utils.ai_agent import detect_ai_agent
+from nominal.core._utils.ai_agent import ai_agent_header_value, detect_ai_agent
 
 
 @pytest.mark.parametrize(
@@ -24,3 +24,18 @@ from nominal.core._utils.ai_agent import detect_ai_agent
 def test_detect_ai_agent(environ: dict[str, str], expected: str | None) -> None:
     """AI_AGENT wins, then an agent's own variable, then AGENT; None when nothing marks the process."""
     assert detect_ai_agent(environ) == expected
+
+
+@pytest.mark.parametrize(
+    ("environ", "expected"),
+    [
+        ({}, "none"),
+        ({"AI_AGENT": "0", "CLAUDECODE": "1"}, "none"),
+        ({"CLAUDECODE": "1"}, "claude-code"),
+        ({"AI_AGENT": "devin@1"}, "devin_1"),
+        ({"AI_AGENT": "my agent (v2)/x" + "a" * 100}, ("my_agent__v2__x" + "a" * 100)[:64]),
+    ],
+)
+def test_ai_agent_header_value(environ: dict[str, str], expected: str) -> None:
+    """The header carries a single bounded token, and "none" when no agent was found."""
+    assert ai_agent_header_value(environ) == expected

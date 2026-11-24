@@ -218,3 +218,16 @@ def test_header_provider_session_can_override_session_default_headers() -> None:
 
     assert prepared.headers["User-Agent"] == "provider-agent"
     session.close()
+
+
+def test_service_session_sends_the_ai_agent_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Conjure sessions send the detected AI agent, or "none", alongside the user agent."""
+    for env, expected in [({"AI_AGENT": "codex"}, "codex"), ({"AI_AGENT": "0"}, "none")]:
+        for key, value in env.items():
+            monkeypatch.setenv(key, value)
+        service_class = MagicMock()
+        create_conjure_service_client(service_class, "test", ServiceConfiguration(uris=["https://example.com"]))
+        with service_class.call_args.args[0] as configured_session:
+            prepared = configured_session.prepare_request(requests.Request("GET", "https://example.com"))
+        assert prepared.headers["User-Agent"] == "test"
+        assert prepared.headers["X-Nominal-AI-Agent"] == expected

@@ -4,7 +4,6 @@ import abc
 import importlib.metadata
 import logging
 import platform
-import re
 import sys
 from typing import (
     Any,
@@ -25,7 +24,6 @@ from typing import (
 from nominal_api import scout_compute_api
 
 from nominal._utils.dataclass_tools import update_dataclass
-from nominal.core._utils.ai_agent import detect_ai_agent
 from nominal.protos.compute.v1 import constants_pb2, source_selection_pb2
 from nominal.protos.types import types_pb2
 
@@ -106,26 +104,16 @@ def label_update(labels: Iterable[str] | None) -> types_pb2.LabelUpdateWrapper |
     return None if labels is None else types_pb2.LabelUpdateWrapper(labels=list(labels))
 
 
-_USER_AGENT_TOKEN_DISALLOWED = re.compile(r"[^A-Za-z0-9._+-]")
-NO_AI_AGENT = "none"
-
-
-def _user_agent_token(value: str | None) -> str:
-    """Reduces a value to a single bounded user-agent token, or "none" when there is no value."""
-    return _USER_AGENT_TOKEN_DISALLOWED.sub("_", value or "")[:64] or NO_AI_AGENT
-
-
 def construct_user_agent_string() -> str:
-    """Constructs a user-agent string with system & Python metadata and the detected AI agent, or "none".
-    E.g.: nominal-python/1.0.0b0 (macOS-14.4-arm64-arm-64bit) cpython/3.12.4 ai-agent/claude-code
+    """Constructs a user-agent string with system & Python metadata.
+    E.g.: nominal-python/1.0.0b0 (macOS-14.4-arm64-arm-64bit) cpython/3.12.4
     """
     try:
         v = importlib.metadata.version("nominal")
         p = platform.platform()
         impl = sys.implementation
         py = platform.python_version()
-        agent = _user_agent_token(detect_ai_agent())
-        return f"{USER_AGENT_NAME}/{v} ({p}) {impl.name}/{py} ai-agent/{agent}"
+        return f"{USER_AGENT_NAME}/{v} ({p}) {impl.name}/{py}"
     except Exception as e:
         # I believe all of the above are cross-platform, but just in-case...
         logger.error("failed to construct user-agent string", exc_info=e)

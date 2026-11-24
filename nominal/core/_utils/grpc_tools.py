@@ -29,6 +29,7 @@ from urllib.parse import urlparse
 import grpc
 from conjure_python_client import ServiceConfiguration
 
+from nominal.core._utils.ai_agent import AI_AGENT_HEADER, ai_agent_header_value
 from nominal.core._utils.networking import HeaderProvider, raise_header_conflict, validate_api_base_url
 from nominal.exceptions import (
     NominalAlreadyExistsError,
@@ -56,6 +57,7 @@ class GRPCStub(Protocol[TStub_co]):
 
 # gRPC channel-arg ints are int32; 2**31 - 1 (~2 GiB) lifts the 4 MB default receive cap without overflowing.
 _MAX_MESSAGE_LENGTH = 2**31 - 1
+_AI_AGENT_METADATA_KEY = AI_AGENT_HEADER.lower()
 # gRPC status codes we retry, mapped from conjure's retryable HTTP statuses (503 -> UNAVAILABLE,
 # 429 -> RESOURCE_EXHAUSTED; 308 has no gRPC analogue). Connection/read failures also surface as UNAVAILABLE.
 _RETRYABLE_STATUS = ("UNAVAILABLE", "RESOURCE_EXHAUSTED")
@@ -205,16 +207,18 @@ class _ClientCallDetailsInterceptor(
 
 
 class _AuthMetadataInterceptor(_ClientCallDetailsInterceptor):
-    """Adds the bearer auth header (and any HeaderProvider headers) to every call's metadata.
+    """Adds the bearer auth header, any HeaderProvider headers, and the AI agent header to every call's metadata.
 
     The gRPC equivalent of conjure's `HeaderProviderSession`: the token and extra headers are injected here
     so call sites never pass `metadata=`. A HeaderProvider header that collides with an already-set header
-    (including ``authorization``) raises `HeaderConflictError`, matching the HTTP path.
+    (including ``authorization``) raises `HeaderConflictError`, matching the HTTP path. A HeaderProvider value for
+    the AI agent header wins, as it does over the HTTP session default.
     """
 
     def __init__(self, auth_header: str, header_provider: HeaderProvider | None) -> None:
         self._auth_header = auth_header
         self._header_provider = header_provider
+        self._ai_agent = ai_agent_header_value()
 
     def _amend(self, details: grpc.ClientCallDetails) -> _ClientCallDetails:
         # gRPC metadata keys must be lowercase ASCII, so keys are lowercased before comparison and use.
@@ -231,6 +235,8 @@ class _AuthMetadataInterceptor(_ClientCallDetailsInterceptor):
                     raise_header_conflict(key)
                 metadata.append((lowered, value))
                 existing.add(lowered)
+        if _AI_AGENT_METADATA_KEY not in existing:
+            metadata.append((_AI_AGENT_METADATA_KEY, self._ai_agent))
         return _replace_call_details(details, metadata=tuple(metadata))
 
 

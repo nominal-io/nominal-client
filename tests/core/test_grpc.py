@@ -116,6 +116,24 @@ def test_auth_interceptor_injects_the_bearer_authorization_header() -> None:
     assert ("authorization", "Bearer tok") in continuation.call_args.args[0].metadata
 
 
+def test_auth_interceptor_sends_the_ai_agent_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every call carries the detected AI agent, or "none"."""
+    for value, expected in [("codex", "codex"), ("0", "none")]:
+        monkeypatch.setenv("AI_AGENT", value)
+        continuation = MagicMock()
+        _AuthMetadataInterceptor("Bearer tok", None).intercept_unary_unary(continuation, _details(), object())
+        assert dict(continuation.call_args.args[0].metadata)["x-nominal-ai-agent"] == expected
+
+
+def test_auth_interceptor_lets_a_header_provider_set_the_ai_agent_header() -> None:
+    """A HeaderProvider value for the AI agent header wins instead of conflicting."""
+    provider = StaticHeaderProvider({"X-Nominal-AI-Agent": "custom"})
+    continuation = MagicMock()
+    _AuthMetadataInterceptor("Bearer tok", provider).intercept_unary_unary(continuation, _details(), object())
+    metadata = continuation.call_args.args[0].metadata
+    assert [v for k, v in metadata if k == "x-nominal-ai-agent"] == ["custom"]
+
+
 def test_auth_interceptor_lowercases_header_provider_keys() -> None:
     """The auth interceptor injects HeaderProvider headers with lowercased metadata keys."""
     provider = StaticHeaderProvider({"X-Nominal-On-Behalf-Of-User": "ri.authn.user.target"})
