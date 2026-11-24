@@ -7,8 +7,14 @@ from typing import Iterator, Mapping, Self, Sequence
 
 import polars as pl
 from nominal._utils.iterator_tools import batched
+from nominal.core._utils.api_tools import build_compute_tag_filter
 from nominal.core._utils.grpc_tools import translate_grpc_errors
-from nominal.core.channel import Channel, ChannelDataType, _channels_with_data_and_cardinality
+from nominal.core.channel import (
+    Channel,
+    ChannelDataType,
+    _batch_check_channels_have_data,
+    _channels_with_data_and_cardinality,
+)
 from nominal.core.client import NominalClient
 from nominal.core.dataset import _get_datasets
 from nominal.protos.compute.v1 import (
@@ -41,6 +47,7 @@ DEFAULT_POINTS_PER_DATAFRAME = 25_000_000
 DEFAULT_POINTS_PER_REQUEST = 1_000_000  # Previous per-request target, available for callers that opt into it.
 DEFAULT_CHANNELS_PER_REQUEST = 256
 _RATE_SAMPLE_CHANNELS = 200
+_SERIES_COUNT_BATCH_SIZE = 40
 
 _POLARS_TYPES = {ChannelDataType.INT: pl.Int64, ChannelDataType.DOUBLE: pl.Float64, ChannelDataType.STRING: pl.String}
 
@@ -415,6 +422,40 @@ class _ExportJob:
     resolution: IntegralNanosecondsDuration | None = None
 
     raw_table: str | None = None
+    ambiguous_channels: frozenset[str] = frozenset()
+
+    def resolve_sources(self) -> Iterator[Self]:
+        """Include ambiguous channels in a raw job when this window selects exactly one series."""
+        if not self.raw_table or not self.ambiguous_channels:
+            yield self
+            return
+
+        candidates = [ch for ch in self.channels if ch.name in self.ambiguous_channels]
+        compute_names = {ch.name for ch in candidates}
+        # Splitting oversized SQL can leave a job with only ambiguous channels.
+        if candidates and len(candidates) < len(self.channels):
+            start = _SecondsNanos.from_nanoseconds(self.time_slice.start_time).to_api()
+            end = _SecondsNanos.from_nanoseconds(self.time_slice.end_time).to_api()
+            filters = build_compute_tag_filter(self.tags)
+            for group in batched(candidates, _SERIES_COUNT_BATCH_SIZE):
+                try:
+                    matches = _batch_check_channels_have_data(group[0]._clients, group, filters, start, end)
+                except Exception:
+                    logger.debug("Using compute after a window series check failed", exc_info=True)
+                    continue
+                compute_names.difference_update(ch.name for ch, single in matches if single)
+        if not compute_names:
+            yield self
+            return
+        raw = [ch for ch in self.channels if ch.name not in compute_names]
+        if raw:
+            yield dataclasses.replace(self, channels=raw, ambiguous_channels=frozenset())
+        yield dataclasses.replace(
+            self,
+            channels=[ch for ch in candidates if ch.name in compute_names],
+            raw_table=None,
+            ambiguous_channels=frozenset(),
+        )
 
     def fit_query_limit(self) -> Iterator[Self]:
         """Split only requests whose SQL exceeds the export API's 100,000 character limit."""
@@ -491,8 +532,17 @@ def _native_clock_frames(points: pl.DataFrame, names: Sequence[str], time_col: s
 
 
 def _export_job(job: _ExportJob, client: NominalClient, time_col: str, join_batches: bool) -> list[pl.DataFrame]:
-    names = [ch.name for ch in job.channels]
     workspace = client._clients.resolve_default_workspace_rid()
+    frames = []
+    for batch in job.resolve_sources():
+        frames.extend(_download_frames(batch, client, workspace, time_col, join_batches))
+    return frames
+
+
+def _download_frames(
+    job: _ExportJob, client: NominalClient, workspace: str, time_col: str, join_batches: bool
+) -> list[pl.DataFrame]:
+    names = [ch.name for ch in job.channels]
     start, end = job.time_slice.start_time, job.time_slice.end_time
     schema = {ch.name: _POLARS_TYPES[ch.data_type] for ch in job.channels if ch.data_type is not None}
     if job.raw_table is not None:
@@ -560,9 +610,10 @@ def _merge_dfs(dfs: Sequence[pl.DataFrame], time_col: str) -> pl.DataFrame:
 class PolarsExportHandler:
     """Streams data out of Nominal into Polars DataFrames.
 
-    Single-series raw channels use SQL jobs that write typed Parquet. Derived, external,
-    multi-series, and decimated channels use compute jobs. The default joins each output
-    window on integer nanosecond timestamps before conversion to the requested time format.
+    Raw channels can share a typed Parquet SQL job when each matches one series within
+    its time window. Derived, external, decimated, and unresolved multi-series channels
+    use compute jobs. The default joins each output window on integer nanosecond timestamps
+    before conversion to the requested time format.
     """
 
     def __init__(
@@ -617,7 +668,7 @@ class PolarsExportHandler:
                 start_time=time_range.start_time,
                 end_time=time_range.end_time,
                 num_workers=min(self._num_workers, 4),
-                batch_size=40,
+                batch_size=_SERIES_COUNT_BATCH_SIZE,
             )
         )
         if not matches:
@@ -664,13 +715,26 @@ class PolarsExportHandler:
         time_slices = time_range.subdivide_ns(max(1, batch_duration_ns))
         batch_timedelta = datetime.timedelta(seconds=batch_duration_ns / 1e9)
 
+        raw_tables: dict[tuple[str, ChannelDataType | None], str] = {
+            (ch.data_source, ch.data_type): _RAW_TABLES[ch.data_type]
+            for ch, single in matches
+            if single and ch.data_type is not None and ch.data_source in raw_datasets
+        }
+        # Files can span separate series over the whole export while sharing a single
+        # matching series per window. Check only channels that could join an existing raw job.
+        ambiguous_channels = {
+            (ch.data_source, ch.name)
+            for ch, single in matches
+            if single is False and len(time_slices) > 1 and (ch.data_source, ch.data_type) in raw_tables
+        }
         channels_by_datasource: dict[tuple[str, str | None], list[Channel]] = collections.defaultdict(list)
         for channel, single_series in matches:
-            if need_rates and (channel.data_source, channel.name) not in points_per_second:
+            key = (channel.data_source, channel.name)
+            if need_rates and key not in points_per_second:
                 continue
             table = (
-                _RAW_TABLES.get(channel.data_type)
-                if channel.data_type and single_series and channel.data_source in raw_datasets
+                raw_tables.get((channel.data_source, channel.data_type))
+                if single_series or key in ambiguous_channels
                 else None
             )
             channels_by_datasource[channel.data_source, table].append(channel)
@@ -678,12 +742,16 @@ class PolarsExportHandler:
         jobs: dict[_TimeRange, list[_ExportJob]] = collections.defaultdict(list)
         for (_, raw_table), ds_channels in channels_by_datasource.items():
             for group, step_ns in self._channel_groups(ds_channels, points_per_second, batch_timedelta):
+                to_check = frozenset(ch.name for ch in group if (ch.data_source, ch.name) in ambiguous_channels)
+                # A window check is useful when it can eliminate a separate compute job.
+                group_table = raw_table if len(to_check) < len(group) else None
                 for window in time_slices:
                     subdivisions = window.subdivide_ns(step_ns) if step_ns is not None else (window,)
                     for bounds in subdivisions:
                         job = _ExportJob(
                             channels=group,
-                            raw_table=raw_table,
+                            raw_table=group_table,
+                            ambiguous_channels=to_check if group_table else frozenset(),
                             time_slice=bounds,
                             tags=tags or {},
                             buckets=buckets,

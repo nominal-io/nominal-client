@@ -56,7 +56,7 @@ for i, df in enumerate(
 `start` and `end` are integer epoch nanoseconds.
 For data on the run's asset, get the dataset with {py:meth}`~nominal.core.Asset.get_dataset` instead, as in [Runs](/guides/runs.md#create-a-run-from-datasets).
 
-For raw channels that each match one series in a stored dataset, the handler downloads typed Parquet and aligns channels in Polars. Decimated, derived, and multi-series exports use compute jobs. Both paths require async export jobs in the selected workspace.
+For raw channels that each match one series in a stored dataset, the handler downloads typed Parquet and aligns channels in Polars. A channel split across ingest files can join a raw job when exactly one series matches its tags in that job’s time window. Channels that still match multiple series in that window use compute. Decimated and derived channels also use compute. Both paths require async export jobs in the selected workspace.
 
 Set `batch_duration` when you know how much time each frame should cover. This skips the sample-rate queries used for automatic sizing unless you also set `points_per_request`. Each job can include up to 256 channels by default. The handler yields time windows in order. Joined exports can process two adjacent windows concurrently. With `join_batches=False`, the handler can use spare workers for later windows when each window contains only a few jobs. Use `num_workers` to tune concurrency for your deployment and available memory.
 

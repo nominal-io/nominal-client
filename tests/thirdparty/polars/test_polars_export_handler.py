@@ -693,3 +693,37 @@ def test_export_prefetch_preserves_window_order(mock_client, monkeypatch, join_b
     assert next(frames)["timestamp"].item() == 0
     assert submitted == initial_jobs
     assert [frame["timestamp"][0] for frame in frames] == remaining_frames
+
+
+@pytest.mark.parametrize("overlap_count", [2, None])
+def test_mixed_raw_job_resolves_ambiguous_channels_for_its_own_window(
+    mock_client, mock_clients, make_channel, make_enriched_dataset, make_series_count_response, overlap_count
+):
+    channels = [make_channel("slow"), make_channel("fast")]
+    ds = mock_clients.datasource.batch_get_series_count
+    ds.return_value = make_series_count_response([1, 2])
+    mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
+    plan = PolarsExportHandler(mock_client)._compute_export_jobs(
+        channels,
+        _TimeRange(0, TWENTY_SECONDS_NS - 1),
+        tags={"flight": "a"},
+        batch_duration=datetime.timedelta(seconds=10),
+    )
+    first, second = plan.values()
+    assert len(first) == len(second) == 1
+
+    ds.return_value = make_series_count_response([1])
+    assert [(job.raw_table, list(job.channels)) for job in first[0].resolve_sources()] == [("points_double", channels)]
+    request = ds.call_args.args[1].requests
+    assert len(request) == 1 and request[0].channel == "fast"
+    assert request[0].range.end.seconds == 9 and request[0].range.end.nanos == 999_999_999
+    assert request[0].tag_filters is not None
+
+    if overlap_count is None:
+        ds.side_effect = RuntimeError("unavailable")
+    else:
+        ds.return_value = make_series_count_response([overlap_count])
+    assert [(job.raw_table, list(job.channels)) for job in second[0].resolve_sources()] == [
+        ("points_double", channels[:1]),
+        (None, channels[1:]),
+    ]
