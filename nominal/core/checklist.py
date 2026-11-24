@@ -52,7 +52,11 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
         def checklist_execution(self) -> scout_checklistexecution_api.ChecklistExecutionService: ...
 
     @classmethod
-    def _from_conjure(cls, clients: _Clients, checklist: scout_checks_api.VersionedChecklist) -> Self:
+    def _from_conjure(
+        cls,
+        clients: _Clients,
+        checklist: scout_checks_api.VersionedChecklist | scout_checks_api.SearchVersionedChecklist,
+    ) -> Self:
         # TODO(ritwikdixit): support draft checklists with VCS
         if not checklist.metadata.is_published:
             raise NominalChecklistNotPublishedError(
