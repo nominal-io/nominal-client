@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import gzip
 import io
+from concurrent.futures import Future
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 
@@ -22,6 +23,7 @@ from nominal.thirdparty.polars.polars_export_handler import (
     PolarsExportHandler,
     _batch_channel_points_per_second,
     _build_channel_groups,
+    _ExportJob,
     _extract_bucket_counts,
     _peak_points_per_second,
     _TimeRange,
@@ -663,3 +665,31 @@ def test_unjoined_raw_frames_follow_exact_sample_times(
             i = names.index(name)
             assert df["timestamp.1"].to_list() == clocks[i]
             assert df[name].to_list() == [2**53 + i + ts for ts in clocks[i]]
+
+
+@pytest.mark.parametrize(
+    ("join_batches", "initial_jobs", "remaining_frames"),
+    [(False, [0, 1, 2, 2], [1, 2, 2, 3, 4, 5]), (True, [0, 1], [1, 2, 3, 4, 5])],
+)
+def test_export_prefetch_preserves_window_order(mock_client, monkeypatch, join_batches, initial_jobs, remaining_frames):
+    windows = [_TimeRange(i, i) for i in range(6)]
+    jobs = {window: [_ExportJob(channels=[], time_slice=window, tags={})] for window in windows}
+    # Two channel groups in the third window require two worker slots.
+    jobs[windows[2]].append(_ExportJob(channels=[], time_slice=windows[2], tags={}))
+    submitted = []
+
+    def submit(_fn, job, *_args):
+        submitted.append(job.time_slice.start_time)
+        future = Future()
+        future.set_result([pl.DataFrame({"timestamp": [job.time_slice.start_time]})])
+        return future
+
+    pool = MagicMock()
+    pool.submit.side_effect = submit
+    monkeypatch.setattr("concurrent.futures.ThreadPoolExecutor", lambda max_workers: pool)
+    handler = PolarsExportHandler(mock_client, num_workers=4)
+    frames = handler._export_dataframes(jobs, "timestamp", "epoch_nanoseconds", join_batches=join_batches)
+
+    assert next(frames)["timestamp"].item() == 0
+    assert submitted == initial_jobs
+    assert [frame["timestamp"][0] for frame in frames] == remaining_frames

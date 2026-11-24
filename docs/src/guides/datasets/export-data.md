@@ -58,7 +58,7 @@ For data on the run's asset, get the dataset with {py:meth}`~nominal.core.Asset.
 
 For raw channels that each match one series in a stored dataset, the handler downloads typed Parquet and aligns channels in Polars. Decimated, derived, and multi-series exports use compute jobs. Both paths require async export jobs in the selected workspace.
 
-Set `batch_duration` when you know how much time each frame should cover. This skips the sample-rate queries used for automatic sizing unless you also set `points_per_request`. Each job can include up to 256 channels by default. The handler can process two adjacent time windows concurrently and yields them in order.
+Set `batch_duration` when you know how much time each frame should cover. This skips the sample-rate queries used for automatic sizing unless you also set `points_per_request`. Each job can include up to 256 channels by default. The handler yields time windows in order. Joined exports can process two adjacent windows concurrently. With `join_batches=False`, the handler can use spare workers for later windows when each window contains only a few jobs. Use `num_workers` to tune concurrency for your deployment and available memory.
 
 
 - The handler is experimental. It exports `DOUBLE`, `INT` and `STRING` channels, and skips other types with a warning.
@@ -70,12 +70,14 @@ Set `batch_duration` when you know how much time each frame should cover. This s
 
 For hundreds of slow channels alongside a few high-rate channels, pass all the channels in one call with `join_batches=False`. Within each raw SQL job and time window, channels with identical timestamps share a frame. A dropped sample or a clock offset can put two channels of the same nominal rate into separate frames. Each frame contains only channels with samples in that window. Compute jobs yield one frame per job.
 
+Four 10 kHz channels contribute 4.8 million samples per two-minute window. Shorten the window or lower `num_workers` to reduce peak memory.
+
 ```python
 frames = PolarsExportHandler(client).export(
     channels,
     start=run.start,
     end=end,
-    batch_duration=timedelta(minutes=1),
+    batch_duration=timedelta(minutes=2),
     join_batches=False,
     timestamp_type="iso_8601",
 )

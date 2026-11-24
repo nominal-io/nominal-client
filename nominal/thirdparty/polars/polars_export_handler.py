@@ -789,24 +789,28 @@ class PolarsExportHandler:
         timestamp_type: _AnyExportableTimestampType,
         join_batches: bool,
     ) -> Iterator[pl.DataFrame]:
-        # One window of lookahead overlaps server execution and download with the current
-        # frame's assembly and consumption. Results are still yielded in time-window order.
-        windows = iter(sorted(export_jobs))
+        windows = collections.deque(sorted(export_jobs))
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=self._num_workers)
         try:
             pending: collections.deque[list[concurrent.futures.Future[list[pl.DataFrame]]]] = collections.deque()
+            queued_jobs = 0
             while True:
-                while len(pending) < 2 and (window := next(windows, None)) is not None:
+                while windows:
+                    jobs = export_jobs[windows[0]]
+                    # Keep one window ahead. For unjoined frames, use spare worker slots for
+                    # later windows when the current windows contain only a few jobs.
+                    if len(pending) >= 2 and (join_batches or queued_jobs + len(jobs) > self._num_workers):
+                        break
+                    windows.popleft()
                     pending.append(
-                        [
-                            pool.submit(_export_job, job, self._client, time_column, join_batches)
-                            for job in export_jobs[window]
-                        ]
+                        [pool.submit(_export_job, job, self._client, time_column, join_batches) for job in jobs]
                     )
+                    queued_jobs += len(jobs)
                 if not pending:
                     return
                 results: list[pl.DataFrame] = []
                 futures = pending.popleft()
+                queued_jobs -= len(futures)
                 for future in futures if join_batches else concurrent.futures.as_completed(futures):
                     if join_batches:
                         results.extend(future.result())
