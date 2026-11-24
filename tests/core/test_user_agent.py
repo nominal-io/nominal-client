@@ -17,6 +17,8 @@ from nominal.core._utils.api_tools import construct_user_agent_string, detect_ai
         ({"AGENT": "1"}, "unknown"),
         ({"AGENT": "false"}, "none"),
         ({"CLAUDECODE": ""}, "none"),
+        ({"CURSOR_AGENT": "1"}, "cursor"),
+        ({"CURSOR_TRACE_ID": "abc", "TERM_PROGRAM": "vscode"}, "none"),
     ],
 )
 def test_detect_ai_agent(environ: dict[str, str], expected: str) -> None:

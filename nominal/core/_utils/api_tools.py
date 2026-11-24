@@ -116,7 +116,6 @@ _AGENT_ENV_VARS: Mapping[str, str] = {
     "CODEX_SANDBOX": "codex",
     "CODEX_CI": "codex",
     "CURSOR_AGENT": "cursor",
-    "CURSOR_TRACE_ID": "cursor",  # Also set in Cursor terminals a person types in; counted as agent use on purpose.
     "GEMINI_CLI": "gemini",
     "COPILOT_ALLOW_ALL": "github-copilot",
     "OPENCODE": "opencode",
