@@ -658,10 +658,10 @@ def _batch_check_channels_have_data(
     tag_filters: scout_compute_api.TagFilters | None,
     start: api.Timestamp,
     end: api.Timestamp,
-) -> list[tuple[Channel, bool]]:
+) -> list[tuple[Channel, bool | None]]:
     """Check a batch of channels for data presence via a single batchGetSeriesCount call.
 
-    Returns matching channels paired with whether the tag filter selected a single series.
+    Omit confirmed zeros. Pair each remaining channel with its single-series flag or None for an unknown count.
 
     Note:
         Request may fail if rate limits are breached, too many series are queried, bounds are invalid
@@ -683,9 +683,9 @@ def _batch_check_channels_have_data(
     response = clients.datasource.batch_get_series_count(clients.auth_header, request)
 
     return [
-        (channel, result.series_count == 1)
+        (channel, None if result.series_count is None else result.series_count == 1)
         for channel, result in zip(channels, response.responses, strict=True)
-        if result.series_count is not None and result.series_count > 0
+        if result.series_count != 0
     ]
 
 
@@ -752,7 +752,7 @@ def _channels_with_data_and_cardinality(
     )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:
-        pending: dict[concurrent.futures.Future[list[tuple[Channel, bool]]], Sequence[Channel]] = {
+        pending: dict[concurrent.futures.Future[list[tuple[Channel, bool | None]]], Sequence[Channel]] = {
             pool.submit(check_batch, batch): batch for batch in batched(channels, batch_size)
         }
 
@@ -763,7 +763,6 @@ def _channels_with_data_and_cardinality(
                 try:
                     matched = future.result()
                 except Exception:
-                    # Series count calculations may fail for a myriad of reasons, such as
                     # A single-channel request that failed is already a retry (or was submitted
                     # that way by the caller via batch_size=1); don't retry indefinitely.
                     if len(batch) == 1:

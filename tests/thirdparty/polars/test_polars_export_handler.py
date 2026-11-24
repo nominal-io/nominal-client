@@ -22,7 +22,6 @@ from nominal.protos.types.time import time_pb2
 from nominal.thirdparty.polars.polars_export_handler import (
     PolarsExportHandler,
     _batch_channel_points_per_second,
-    _build_channel_groups,
     _ExportJob,
     _extract_bucket_counts,
     _peak_points_per_second,
@@ -97,11 +96,11 @@ def test_extract_enum_undecimated():
     assert all(count == 1 for _, count in result)
 
 
-def test_extract_unrecognized_response_returns_empty():
-    """An unrecognized response shape returns an empty list rather than raising."""
+def test_extract_unrecognized_response_returns_unknown():
+    """An unrecognized result gives the planner an unknown rate."""
     response = execution_results_pb2.ComputationResult()
 
-    assert _extract_bucket_counts(response) == []
+    assert _extract_bucket_counts(response) is None
 
 
 # -- _peak_points_per_second --
@@ -141,8 +140,8 @@ def test_peak_pps_skips_duplicate_timestamps():
         (1_000_000_000, 50),
         (2_000_000_000, 20),
     ]
-    # Only the 1s→2s interval contributes: 20 pts / 1s = 20 PPS
-    assert _peak_points_per_second(buckets, start_ns=0, end_ns=2_000_000_000) == pytest.approx(20.0)
+    # Coincident samples still contribute to the average: 80 samples in two seconds.
+    assert _peak_points_per_second(buckets, start_ns=0, end_ns=2_000_000_000) == pytest.approx(40.0)
 
 
 # -- _batch_channel_points_per_second --
@@ -249,132 +248,23 @@ def test_pps_per_channel_error_returns_none_for_failed(
     assert result[("ds-1", "bad")] is None
 
 
-# -- _build_channel_groups --
-
-
-def _group_args(pairs):
-    """Build (pps_by_key, channels_by_key) dicts from a list of (Channel, rate) pairs."""
-    pps_by_key = {(ch.data_source, ch.name): rate for ch, rate in pairs}
-    channels_by_key = {(ch.data_source, ch.name): ch for ch, _ in pairs}
-    return pps_by_key, channels_by_key
-
-
-def test_groups_mixed_types_share_a_group_when_budget_allows(make_channel):
-    """Numeric (DOUBLE/INT) and string channels are packed into the same group under the rate budget.
-
-    Now that PPS estimation works for all types, grouping is budget-driven and no longer
-    partitions by data type. With a roomy budget, all channels fit in a single group.
-    """
-    pps, channels = _group_args(
-        [
-            (make_channel("temp", ChannelDataType.DOUBLE), 100.0),
-            (make_channel("pressure", ChannelDataType.INT), 100.0),
-            (make_channel("status", ChannelDataType.STRING), 50.0),
-        ]
+@pytest.mark.parametrize(
+    ("rates", "budget", "cap", "expected"),
+    [
+        ([100, 100, 50], 250, 3, [([0, 1, 2], None)]),
+        ([200] * 5, 500, 5, [([0, 1], None), ([2, 3], None), ([4], None)]),
+        ([10_000, 100], 500, 2, [([0], 50_000_000), ([1], None)]),
+        ([1, 0, 0], 1000, 2, [([0, 1], None), ([2], None)]),
+        ([], 1000, 2, []),
+    ],
+)
+def test_channel_groups_respect_both_budgets(mock_client, make_channel, rates, budget, cap, expected):
+    channels = [make_channel(str(i)) for i in range(len(rates))]
+    handler = PolarsExportHandler(mock_client, points_per_request=budget, channels_per_request=cap)
+    groups = handler._channel_groups(
+        channels, {(ch.data_source, ch.name): rate for ch, rate in zip(channels, rates)}, 10**9
     )
-
-    groups, large = _build_channel_groups(
-        pps,
-        channels,
-        points_per_request=1_000_000,
-        max_channels_per_group=100,
-        batch_duration=datetime.timedelta(seconds=10),
-    )
-
-    assert large == []
-    assert len(groups) == 1
-    assert {ch.name for ch in groups[0]} == {"temp", "pressure", "status"}
-
-
-def test_groups_split_when_rate_budget_exceeded(make_channel):
-    """Channels are split into new groups when cumulative PPS exceeds the per-request budget."""
-    # 5 channels at 200 PPS each, budget 500 PPS → expect groups of 2, 2, 1.
-    pps, channels = _group_args([(make_channel(f"ch{i}"), 200.0) for i in range(5)])
-
-    groups, large = _build_channel_groups(
-        pps,
-        channels,
-        points_per_request=500,
-        max_channels_per_group=100,
-        batch_duration=datetime.timedelta(seconds=1),
-    )
-
-    assert len(groups) == 3
-    assert large == []
-
-
-def test_groups_isolate_high_rate_channels(make_channel):
-    """A channel whose individual rate exceeds the per-group budget is returned as large."""
-    pps, channels = _group_args(
-        [
-            (make_channel("fast"), 10_000.0),
-            (make_channel("slow"), 100.0),
-        ]
-    )
-
-    groups, large = _build_channel_groups(
-        pps,
-        channels,
-        points_per_request=500,
-        max_channels_per_group=100,
-        batch_duration=datetime.timedelta(seconds=1),
-    )
-
-    assert [ch.name for ch in large] == ["fast"]
-    assert len(groups) == 1
-    assert [ch.name for ch in groups[0]] == ["slow"]
-
-
-def test_groups_respect_max_channels_per_group(make_channel):
-    """Groups are capped at the configured max channels per group."""
-    pps, channels = _group_args([(make_channel(f"ch{i}"), 1.0) for i in range(10)])
-
-    groups, large = _build_channel_groups(
-        pps,
-        channels,
-        points_per_request=1_000_000,
-        max_channels_per_group=3,
-        batch_duration=datetime.timedelta(seconds=1),
-    )
-
-    assert large == []
-    assert sum(len(g) for g in groups) == 10
-    assert all(len(g) <= 3 for g in groups)
-
-
-def test_groups_empty_input():
-    """Empty inputs produce no groups and no large channels."""
-    groups, large = _build_channel_groups(
-        {},
-        {},
-        points_per_request=1_000_000,
-        max_channels_per_group=100,
-        batch_duration=datetime.timedelta(seconds=1),
-    )
-
-    assert groups == []
-    assert large == []
-
-
-def test_groups_include_zero_rate_channels(make_channel):
-    """Channels with 0.0 PPS (unknown rate) are still grouped, not silently dropped."""
-    pps, channels = _group_args(
-        [
-            (make_channel("known"), 100.0),
-            (make_channel("unknown"), 0.0),
-        ]
-    )
-
-    groups, large = _build_channel_groups(
-        pps,
-        channels,
-        points_per_request=1_000_000,
-        max_channels_per_group=100,
-        batch_duration=datetime.timedelta(seconds=10),
-    )
-
-    assert large == []
-    assert {ch.name for group in groups for ch in group} == {"known", "unknown"}
+    assert [([int(ch.name) for ch in group], step) for group, step in groups] == expected
 
 
 # -- _compute_export_jobs --
@@ -405,7 +295,7 @@ def test_auto_sizing_keeps_channels_with_failed_rates(
     handler = PolarsExportHandler(client=mock_client)
     jobs = handler._compute_export_jobs(channels, _TimeRange(0, TEN_SECONDS_NS))
 
-    exported_names = {ch.name for job_list in jobs.values() for job in job_list for ch in job.channels}
+    exported_names = {ch.name for job_list in jobs for job in job_list for ch in job.channels}
     assert exported_names == {"known", "none_rate"}
 
 
@@ -433,9 +323,10 @@ def test_compute_export_jobs_handles_cross_datasource_name_collision(
     handler = PolarsExportHandler(client=mock_client)
     jobs = handler._compute_export_jobs(channels, _TimeRange(0, TEN_SECONDS_NS))
 
-    assert {
-        (ch.data_source, ch.name, ch.data_type) for group in jobs.values() for job in group for ch in job.channels
-    } == {("ds-a", "temp", ChannelDataType.DOUBLE), ("ds-b", "temp", ChannelDataType.INT)}
+    assert {(ch.data_source, ch.name, ch.data_type) for group in jobs for job in group for ch in job.channels} == {
+        ("ds-a", "temp", ChannelDataType.DOUBLE),
+        ("ds-b", "temp", ChannelDataType.INT),
+    }
 
 
 def test_export_excludes_unsupported_channel_types(
@@ -464,7 +355,7 @@ def test_export_excludes_unsupported_channel_types(
     request = service.CreateExportJob.call_args.args[0]
     assert request.workspace_rid == "workspace"
     definition = request.compute.definition
-    assert [col.name for col in definition.time_domain.columns] == ["temp"]
+    assert len(definition.time_domain.columns) == 1
     assert definition.resolution.bucket_count == 10
     service.GetExportJob.assert_called_once_with(jobs.GetExportJobRequest(export_id="job-id"))
 
@@ -501,7 +392,7 @@ def test_completed_compute_export_downloads_csv(
     monkeypatch.setattr("time.sleep", lambda _: None)
     response = MagicMock()
     response.__enter__.return_value.status_code = 200
-    response.__enter__.return_value.raw = io.BytesIO(gzip.compress(b"timestamp,timestamp.1\n0,12.5\n"))
+    response.__enter__.return_value.raw = io.BytesIO(gzip.compress(b"timestamp,0\n0,12.5\n"))
     monkeypatch.setattr("requests.get", MagicMock(return_value=response))
     frames = list(
         PolarsExportHandler(mock_client).export(
@@ -533,15 +424,14 @@ def test_compute_export_jobs_subdivides_large_channel_into_sub_slices(
     jobs = handler._compute_export_jobs([channel], parent_range, batch_duration=batch_duration)
 
     # All sub-slices roll up under a single parent time_slice.
-    assert len(jobs) == 1
-    parent_slice, job_list = next(iter(jobs.items()))
-    assert parent_slice == parent_range
+    (job_list,) = jobs
+    parent_slice = parent_range
     assert len(job_list) > 1
 
     assert all(list(job.channels) == [channel] for job in job_list)
 
     # Sub-slices tile the parent: no gaps, no overlaps, full coverage, each narrower than parent.
-    sub_ranges = sorted(job.time_slice for job in job_list)
+    sub_ranges = sorted((job.time_slice for job in job_list), key=lambda window: window.start_time)
     assert sub_ranges[0].start_time == parent_slice.start_time
     assert sub_ranges[-1].end_time == parent_slice.end_time
     for a, b in zip(sub_ranges, sub_ranges[1:]):
@@ -611,7 +501,7 @@ def test_raw_jobs_require_plain_dataset_and_single_series(
     plan = PolarsExportHandler(mock_client)._compute_export_jobs(
         channels, _TimeRange(0, TEN_SECONDS_NS), batch_duration=datetime.timedelta(seconds=10)
     )
-    assert {ch.name: job.raw_table for group in plan.values() for job in group for ch in job.channels} == {
+    assert {ch.name: job.raw_table for group in plan for job in group for ch in job.channels} == {
         "raw": "points_double",
         "multi": None,
         "derived": None,
@@ -671,24 +561,28 @@ def test_unjoined_raw_frames_follow_exact_sample_times(
     ("join_batches", "initial_jobs", "remaining_frames"),
     [(False, [0, 1, 2, 2], [1, 2, 2, 3, 4, 5]), (True, [0, 1], [1, 2, 3, 4, 5])],
 )
-def test_export_prefetch_preserves_window_order(mock_client, monkeypatch, join_batches, initial_jobs, remaining_frames):
+def test_export_prefetch_preserves_window_order(
+    mock_client, make_channel, monkeypatch, join_batches, initial_jobs, remaining_frames
+):
     windows = [_TimeRange(i, i) for i in range(6)]
-    jobs = {window: [_ExportJob(channels=[], time_slice=window, tags={})] for window in windows}
+    jobs = {window: [_ExportJob(channels=[make_channel("left")], time_slice=window, tags={})] for window in windows}
     # Two channel groups in the third window require two worker slots.
-    jobs[windows[2]].append(_ExportJob(channels=[], time_slice=windows[2], tags={}))
+    jobs[windows[2]].append(_ExportJob(channels=[make_channel("right")], time_slice=windows[2], tags={}))
     submitted = []
 
     def submit(_fn, job, *_args):
         submitted.append(job.time_slice.start_time)
         future = Future()
-        future.set_result([pl.DataFrame({"timestamp": [job.time_slice.start_time]})])
+        future.set_result([pl.DataFrame({"timestamp": [job.time_slice.start_time], job.channels[0].name: [10]})])
         return future
 
     pool = MagicMock()
     pool.submit.side_effect = submit
     monkeypatch.setattr("concurrent.futures.ThreadPoolExecutor", lambda max_workers: pool)
     handler = PolarsExportHandler(mock_client, num_workers=4)
-    frames = handler._export_dataframes(jobs, "timestamp", "epoch_nanoseconds", join_batches=join_batches)
+    frames = handler._export_dataframes(
+        iter(jobs.values()), "timestamp", "epoch_nanoseconds", join_batches=join_batches
+    )
 
     assert next(frames)["timestamp"].item() == 0
     assert submitted == initial_jobs
@@ -709,7 +603,7 @@ def test_mixed_raw_job_resolves_ambiguous_channels_for_its_own_window(
         tags={"flight": "a"},
         batch_duration=datetime.timedelta(seconds=10),
     )
-    first, second = plan.values()
+    first, second = plan
     assert len(first) == len(second) == 1
 
     ds.return_value = make_series_count_response([1])
@@ -727,3 +621,123 @@ def test_mixed_raw_job_resolves_ambiguous_channels_for_its_own_window(
         ("points_double", channels[:1]),
         (None, channels[1:]),
     ]
+
+
+def test_missing_series_count_uses_compute(mock_client, mock_clients, make_channel, make_series_count_response):
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([None, 0])
+    plan = PolarsExportHandler(mock_client)._compute_export_jobs(
+        [make_channel("external"), make_channel("absent")],
+        _TimeRange(0, 10),
+        batch_duration=datetime.timedelta(seconds=1),
+    )
+    assert [(job.raw_table, [ch.name for ch in job.channels]) for group in plan for job in group] == [
+        (None, ["external"])
+    ]
+
+
+def test_first_bucket_contributes_to_peak():
+    assert _peak_points_per_second([(1_000_000_000, 23), (2_000_000_000, 0)], 0, 2_000_000_000) == 23
+
+
+def test_single_categorical_sample_counts():
+    response = execution_results_pb2.ComputationResult()
+    response.categorical_sample.sample.timestamp.nanos = 123
+    assert _extract_bucket_counts(response) == [(123, 1)]
+
+
+def test_submicrosecond_window_keeps_channel(
+    mock_client, mock_clients, make_channel, make_series_count_response, make_compute_result, make_numeric_response
+):
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
+    mock_client._clients.compute.BatchComputeWithUnits.return_value.results = [
+        make_compute_result(success=make_numeric_response([1]))
+    ]
+    plan = PolarsExportHandler(mock_client, points_per_dataframe=1, points_per_request=1)._compute_export_jobs(
+        [make_channel("edge")], _TimeRange(0, 10)
+    )
+    assert [job.time_slice for group in plan for job in group] == [_TimeRange(0, 10)]
+
+
+def test_joined_export_rejects_duplicate_channel_names(mock_client, make_channel):
+    channels = [make_channel("temp", data_source=rid) for rid in ("first", "second")]
+    with pytest.raises(ValueError, match="temp.*join_batches=False"):
+        list(PolarsExportHandler(mock_client).export(channels, 0, 100))
+    mock_client._clients.export_jobs.CreateExportJob.assert_not_called()
+
+
+def test_joined_subdivisions_keep_tag_expansions_in_one_column(mock_client, make_channel, monkeypatch):
+    channel = make_channel("signal")
+    jobs = [_ExportJob([channel], _TimeRange(i, i), {}) for i in range(2)]
+
+    def export(job, *_):
+        i = job.time_slice.start_time
+        return [pl.DataFrame({"timestamp": [i], "signal": [None], "signal_a": [i], **({"signal_b": [7]} if i else {})})]
+
+    monkeypatch.setattr("nominal.thirdparty.polars.polars_export_handler._export_job", export)
+    frames = PolarsExportHandler(mock_client)._export_dataframes(iter([jobs]), "timestamp", "epoch_nanoseconds", True)
+    (frame,) = frames
+    assert frame.to_dict(as_series=False) == {
+        "timestamp": [0.0, 1.0],
+        "signal": [None, None],
+        "signal_a": [0, 1],
+        "signal_b": [None, 7],
+    }
+
+
+def test_joined_disjoint_clocks_preserve_both_timestamps(mock_client, make_channel, monkeypatch):
+    window = _TimeRange(0, 1)
+    jobs = [_ExportJob([make_channel(name)], window, {}) for name in ("slow", "timestamp_right", "empty")]
+
+    def export(job, *_):
+        name = job.channels[0].name
+        timestamps = {"slow": [0], "timestamp_right": [1], "empty": []}[name]
+        return [
+            pl.DataFrame({"timestamp": timestamps, name: timestamps}, schema={"timestamp": pl.Int64, name: pl.Int64})
+        ]
+
+    monkeypatch.setattr("nominal.thirdparty.polars.polars_export_handler._export_job", export)
+    (frame,) = PolarsExportHandler(mock_client)._export_dataframes(iter([jobs]), "timestamp", "epoch_nanoseconds", True)
+    assert frame.to_dict(as_series=False) == {
+        "timestamp": [0.0, 1.0],
+        "slow": [0, None],
+        "timestamp_right": [None, 1],
+        "empty": [None, None],
+    }
+
+
+def test_first_window_does_not_plan_the_remaining_export(
+    mock_client, mock_clients, make_channel, make_series_count_response, monkeypatch
+):
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
+    planned = []
+
+    def fit_query_limit(job):
+        planned.append(job.time_slice)
+        return (job,)
+
+    monkeypatch.setattr(_ExportJob, "fit_query_limit", fit_query_limit)
+    plan = PolarsExportHandler(mock_client)._compute_export_jobs(
+        [make_channel("signal")], _TimeRange(0, 10**15), batch_duration=datetime.timedelta(seconds=1)
+    )
+    assert next(plan)[0].time_slice == _TimeRange(0, 10**9 - 1)
+    assert planned == [_TimeRange(0, 10**9 - 1)]
+
+
+def test_tag_expanded_compute_csv_preserves_string_values(
+    mock_client, mock_clients, make_channel, make_series_count_response, monkeypatch
+):
+    mock_client._clients.resolve_default_workspace_rid.return_value = "workspace"
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([2, 1])
+
+    @contextmanager
+    def download(_, request):
+        grouped, plain = [col.name for col in request.compute.definition.time_domain.columns]
+        csv = f"timestamp,{grouped}_region_eu,{plain}\n123,00042,9007199254740993\n"
+        yield io.BytesIO(gzip.compress(csv.encode()))
+
+    monkeypatch.setattr("nominal.thirdparty.polars.polars_export_handler.download_export", download)
+    channels = [make_channel("timestamp", ChannelDataType.STRING), make_channel("count", ChannelDataType.INT)]
+    (df,) = PolarsExportHandler(mock_client).export(channels, 0, 1000, batch_duration=datetime.timedelta(seconds=1))
+    assert df["timestamp_region_eu"].to_list() == ["00042"]
+    assert df["timestamp"].to_list() == [None]
+    assert df["count"].to_list() == [9007199254740993]

@@ -2,6 +2,7 @@ import collections
 import concurrent.futures
 import dataclasses
 import datetime
+import functools
 import logging
 from typing import Iterator, Mapping, Self, Sequence
 
@@ -34,7 +35,6 @@ from nominal.ts import (
     Iso8601,
     Relative,
     _AnyExportableTimestampType,
-    _InferrableTimestampType,
     _SecondsNanos,
     _to_typed_timestamp_type,
 )
@@ -61,11 +61,6 @@ _RAW_TABLES = {
 # TODO(drake) raise 1000 limit once backend limit is raised
 MAX_NUM_BUCKETS = 1000
 
-# Channel data types that can be exported as dataframe columns.
-_EXPORTABLE_DATA_TYPES: frozenset[ChannelDataType] = frozenset(
-    [ChannelDataType.DOUBLE, ChannelDataType.INT, ChannelDataType.STRING]
-)
-
 DEFAULT_EXPORTED_TIMESTAMP_COL_NAME = "timestamp"
 
 logger = logging.getLogger(__name__)
@@ -73,7 +68,7 @@ logger = logging.getLogger(__name__)
 
 def _extract_bucket_counts(
     response: execution_results_pb2.ComputationResult,
-) -> Sequence[tuple[IntegralNanosecondsUTC, int]]:
+) -> Sequence[tuple[IntegralNanosecondsUTC, int]] | None:
     """Extract (timestamp, point_count) pairs from a compute response.
 
     Works for both numeric and enum series. Handles bucketed (decimated) responses
@@ -84,13 +79,6 @@ def _extract_bucket_counts(
             (_SecondsNanos.from_proto(bucket.end).to_nanoseconds(), bucket.statistics.count)
             for bucket in response.numeric_buckets.buckets
         ]
-    if response.HasField("numeric_samples"):
-        return [
-            (_SecondsNanos.from_proto(point.timestamp).to_nanoseconds(), 1)
-            for point in response.numeric_samples.samples
-        ]
-    if response.HasField("numeric_sample") and response.numeric_sample.HasField("sample"):
-        return [(_SecondsNanos.from_proto(response.numeric_sample.sample.timestamp).to_nanoseconds(), 1)]
     if response.HasField("categorical_buckets"):
         return [
             (
@@ -99,13 +87,17 @@ def _extract_bucket_counts(
             )
             for bucket in response.categorical_buckets.buckets
         ]
-    if response.HasField("categorical_samples"):
-        return [
-            (_SecondsNanos.from_proto(point.timestamp).to_nanoseconds(), 1)
-            for point in response.categorical_samples.samples
-        ]
-    logger.warning("Unrecognized compute response type: %s", response.WhichOneof("kind"))
-    return []
+    if response.HasField("numeric_samples"):
+        timestamps = [point.timestamp for point in response.numeric_samples.samples]
+    elif response.HasField("categorical_samples"):
+        timestamps = [point.timestamp for point in response.categorical_samples.samples]
+    elif response.HasField("numeric_sample") or response.HasField("categorical_sample"):
+        single = response.numeric_sample if response.HasField("numeric_sample") else response.categorical_sample
+        timestamps = [single.sample.timestamp] if single.HasField("sample") else []
+    else:
+        logger.warning("Unrecognized compute response type: %s", response.WhichOneof("kind"))
+        return None
+    return [(_SecondsNanos.from_proto(ts).to_nanoseconds(), 1) for ts in timestamps]
 
 
 def _peak_points_per_second(
@@ -113,28 +105,17 @@ def _peak_points_per_second(
     start_ns: IntegralNanosecondsUTC,
     end_ns: IntegralNanosecondsUTC,
 ) -> float:
-    """Compute the peak points-per-second from a sequence of (timestamp, count) bucket data.
-
-    For a single bucket, uses the full time range as the duration. For multiple buckets,
-    computes PPS between consecutive bucket timestamps and returns the peak.
-    Returns 0.0 if the time range or any bucket interval has zero duration.
-    """
-    if len(bucket_counts) == 0:
+    """Estimate peak rate from bucket ends, using the range average for coincident samples."""
+    if not bucket_counts or end_ns <= start_ns:
         return 0.0
-    elif len(bucket_counts) == 1:
-        total_duration = (end_ns - start_ns) / 1e9
-        if total_duration <= 0:
-            return 0.0
-        return bucket_counts[0][1] / total_duration
-    else:
-        peak_pps = 0.0
-        for idx in range(1, len(bucket_counts)):
-            ts, count = bucket_counts[idx]
-            prev_ts = bucket_counts[idx - 1][0]
-            duration = (ts - prev_ts) / 1e9
-            if duration > 0:
-                peak_pps = max(peak_pps, count / duration)
-        return peak_pps
+    peak = sum(count for _, count in bucket_counts) * 1e9 / (end_ns - start_ns)
+    if len(bucket_counts) > 1:
+        previous = start_ns
+        for timestamp, count in bucket_counts:
+            if timestamp > previous:
+                peak = max(peak, count * 1e9 / (timestamp - previous))
+            previous = timestamp
+    return peak
 
 
 def _batch_channel_points_per_second(
@@ -151,7 +132,7 @@ def _batch_channel_points_per_second(
     compute series for each and submitting a single BatchComputeWithUnitsRequest.
 
     Note:
-        Not intended for direct use — see `_channel_points_per_second`.
+        Not intended for direct use — see `_estimate_export_rates`.
 
     Note:
         Do not use with more than 300 channels, or 500 concurrently across all requests.
@@ -226,138 +207,50 @@ def _batch_channel_points_per_second(
             continue
 
         bucket_counts = _extract_bucket_counts(compute_result.success)
-        if not bucket_counts:
-            logger.warning("No points found in range for channel '%s'", channel.name)
-            results[key] = 0.0
-        else:
-            results[key] = _peak_points_per_second(bucket_counts, start_ns, end_ns)
+        results[key] = None if bucket_counts is None else _peak_points_per_second(bucket_counts, start_ns, end_ns)
 
     return results
 
 
-def _channel_points_per_second(
+def _estimate_export_rates(
     client: NominalClient,
     channels: Sequence[Channel],
-    start: _InferrableTimestampType,
-    end: _InferrableTimestampType,
-    tags: Mapping[str, str] | None = None,
-    num_buckets: int = 100,
-    num_workers: int = DEFAULT_NUM_WORKERS,
-) -> Mapping[tuple[str, str], float | None]:
-    """For each provided channel, determine the peak number of points per second in the given range.
-
-    Splits channels into batches of 200 channels and queries each batch in parallel
-    via an internally-managed thread pool.
-
-    Note:
-        May take a long time for large channel counts. Takes approx. 30s for 1000 channels with good internet,
-        but varies based on how many points are within the query bounds.
-
-    Args:
-        client: Nominal client to make requests with
-        channels: Channels to query data rates for
-        start: Start of the time range to query over
-        end: End of the time range to query over
-        tags: Key-value pairs of tags to filter data with
-        num_buckets: Number of buckets to use when computing points per second
-        num_workers: Number of parallel requests to make
-
-    Returns:
-        Mapping of (data_source, channel_name) to peak points/second, or None when the
-        estimation failed. Keying by the tuple keeps same-named channels from different
-        datasources independent.
-    """
-    start_ns = _SecondsNanos.from_flexible(start).to_nanoseconds()
-    end_ns = _SecondsNanos.from_flexible(end).to_nanoseconds()
-    # Up to 500 channel computations can be outstanding. Two 200-channel batches leave
-    # headroom for other requests and avoid planning fan-out proportional to download workers.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(num_workers, 2)) as pool:
-        futures = {}
-        for channel_batch in batched(channels, _RATE_SAMPLE_CHANNELS):
-            fut = pool.submit(
-                _batch_channel_points_per_second,
-                client,
-                channel_batch,
-                start_ns,
-                end_ns,
-                tags=dict(tags or {}),
-                num_buckets=num_buckets,
-            )
-            futures[fut] = channel_batch
-
-        results: dict[tuple[str, str], float | None] = {}
-        num_processed = 0
-        for fut in concurrent.futures.as_completed(futures):
-            channel_batch = futures[fut]
-            num_processed += len(channel_batch)
-            logger.debug("Completed querying %d/%d channels for update rate", num_processed, len(channels))
-
-            try:
-                res = fut.result()
-            except Exception:
-                logger.exception(
-                    "Failed to extract %d channel sample rates: %s",
-                    len(channel_batch),
-                    [ch.name for ch in channel_batch],
-                )
-                continue
-            results.update(res)
-
-        return results
-
-
-def _build_channel_groups(
-    points_per_second: Mapping[tuple[str, str], float],
-    channels_by_key: Mapping[tuple[str, str], Channel],
-    points_per_request: int,
-    max_channels_per_group: int,
-    batch_duration: datetime.timedelta,
-) -> tuple[list[list[Channel]], list[Channel]]:
-    """Bin-pack channels into groups that fit the per-request rate and channel-count budgets.
-
-    Channels whose individual rate exceeds the per-group budget are returned separately as
-    `large_channels` — the caller handles subdividing their time ranges. Groups are built
-    highest-rate-first so any NaN padding from uneven channel lengths sits at the tail of
-    each export.
-    """
-    batch_seconds = batch_duration.total_seconds()
-    if batch_seconds <= 0:
-        raise ValueError(f"batch_duration must be positive, got {batch_duration}")
-    allowed_rate_per_group = points_per_request / batch_seconds
-
-    # Defensive skip: names in points_per_second should also be in channels_by_key, but
-    # don't raise if the invariant breaks.
-    sorted_pairs = sorted(
-        ((channels_by_key[key], rate) for key, rate in points_per_second.items() if key in channels_by_key),
-        key=lambda pair: pair[1],
-        reverse=True,
+    start_ns: int,
+    end_ns: int,
+    tags: Mapping[str, str] | None,
+    num_workers: int,
+    require_all: bool,
+) -> dict[tuple[str, str], float]:
+    """Use the highest observed rate for unknown channels when sizing a frame approximately."""
+    # The service allows 500 channel computations in flight. Two batches of 200 leave headroom.
+    sample = functools.partial(
+        _batch_channel_points_per_second,
+        client,
+        start_ns=start_ns,
+        end_ns=end_ns,
+        tags=dict(tags or {}),
+        num_buckets=100,
     )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(num_workers, 2)) as pool:
+        rates = {
+            key: rate
+            for batch in pool.map(sample, batched(channels, _RATE_SAMPLE_CHANNELS))
+            for key, rate in batch.items()
+        }
 
-    groups: list[list[Channel]] = []
-    large: list[Channel] = []
-    curr_group: list[Channel] = []
-    curr_rate = 0.0
-    for channel, rate in sorted_pairs:
-        if rate > allowed_rate_per_group:
-            large.append(channel)
-            continue
-
-        # If the current group is too big to fit the current channel, close it out.
-        if curr_rate + rate > allowed_rate_per_group or len(curr_group) >= max_channels_per_group:
-            groups.append(curr_group)
-            curr_group = []
-            curr_rate = 0.0
-
-        curr_group.append(channel)
-        curr_rate += rate
-
-    if curr_group:
-        groups.append(curr_group)
-
-    return groups, large
+    positive = {key: rate for key, rate in rates.items() if rate}
+    unknown = [(ch.data_source, ch.name) for ch in channels if rates.get((ch.data_source, ch.name)) is None]
+    if unknown:
+        if require_all or not positive:
+            raise RuntimeError(
+                f"Could not size export jobs for {len(unknown)} channels. "
+                "Specify batch_duration and omit points_per_request to export without rate estimates."
+            )
+        positive.update(dict.fromkeys(unknown, max(positive.values())))
+    return positive
 
 
-@dataclasses.dataclass(frozen=True, unsafe_hash=True, order=True)
+@dataclasses.dataclass(frozen=True)
 class _TimeRange:
     start_time: IntegralNanosecondsUTC
     end_time: IntegralNanosecondsUTC
@@ -365,44 +258,17 @@ class _TimeRange:
     def duration_ns(self) -> IntegralNanosecondsDuration:
         return self.end_time - self.start_time
 
-    def subdivide_ns(self, duration: IntegralNanosecondsDuration) -> Sequence[Self]:
-        if duration <= 0:
-            raise ValueError("Batch duration must be positive")
-        if self.start_time == self.end_time:
-            return [self]
-        # The service includes both endpoints. Only the final window includes the requested end.
-        return [
-            self.__class__(start, self.end_time if start + duration >= self.end_time else start + duration - 1)
-            for start in range(self.start_time, self.end_time, duration)
-        ]
+    def batch_duration_ns(self, explicit: datetime.timedelta | None, rate: float, target_points: int) -> int:
+        if explicit is not None:
+            return (explicit // datetime.timedelta(microseconds=1)) * 1000
+        span = max(1, self.duration_ns())
+        return min(span, max(1, int(target_points * 1e9 / rate))) if rate else span
 
-    def duration(self) -> datetime.timedelta:
-        return datetime.timedelta(seconds=(self.end_time - self.start_time) / 1e9)
-
-
-def _compute_batch_duration(
-    batch_duration: datetime.timedelta | None,
-    time_range: _TimeRange,
-    points_per_second: Mapping[tuple[str, str], float],
-    points_per_dataframe: int,
-) -> IntegralNanosecondsDuration:
-    """Compute the batch duration for export time slices.
-
-    If no explicit batch_duration is provided, computes one based on the total
-    point rate across all channels and the configured points_per_dataframe limit.
-    """
-    if batch_duration is None:
-        total_point_rate = sum(points_per_second.values())
-        if total_point_rate == 0.0:
-            logger.warning("No data detected in time range, attempting to export in one batch")
-            computed_duration = time_range.duration()
-        else:
-            computed_duration = datetime.timedelta(seconds=points_per_dataframe / total_point_rate)
-
-        # If the computed max batch duration is greater than the requested export duration, truncate
-        return min(int(computed_duration.total_seconds() * 1e9), time_range.duration_ns())
-    else:
-        return int(batch_duration.total_seconds() * 1e9)
+    def subdivide_ns(self, duration: IntegralNanosecondsDuration) -> Iterator[Self]:
+        # Both bounds are inclusive. The final window includes the requested end.
+        for start in range(self.start_time, max(self.start_time + 1, self.end_time), duration):
+            end = self.end_time if start + duration >= self.end_time else start + duration - 1
+            yield self.__class__(start, end)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -501,19 +367,12 @@ def _format_time_col(df: pl.DataFrame, time_col: str, timestamp_type: _AnyExport
 
 
 def _get_exported_timestamp_channel(channel_names: list[str]) -> str:
-    # skip data channel names, and find the highest numbered "timestamp" channel
-    renamed_timestamp_col = DEFAULT_EXPORTED_TIMESTAMP_COL_NAME
-    if DEFAULT_EXPORTED_TIMESTAMP_COL_NAME in channel_names:
-        idx = 1
-        while True:
-            other_col_name = f"{DEFAULT_EXPORTED_TIMESTAMP_COL_NAME}.{idx}"
-            if other_col_name not in channel_names:
-                renamed_timestamp_col = other_col_name
-                break
-            else:
-                idx += 1
-
-    return renamed_timestamp_col
+    name = DEFAULT_EXPORTED_TIMESTAMP_COL_NAME
+    index = 0
+    while name in channel_names:
+        index += 1
+        name = f"{DEFAULT_EXPORTED_TIMESTAMP_COL_NAME}.{index}"
+    return name
 
 
 def _native_clock_frames(points: pl.DataFrame, names: Sequence[str], time_col: str) -> list[pl.DataFrame]:
@@ -555,7 +414,7 @@ def _download_frames(
         with download_export(client, request) as file:
             points = pl.read_parquet(file)
         if points.is_empty():
-            return []
+            return [pl.DataFrame(schema={time_col: pl.Int64, **schema})] if join_batches else []
         if not join_batches:
             return _native_clock_frames(points, names, time_col)
         # Pivot on the caller-safe timestamp name so even channels named "ts" and "timestamp" work.
@@ -563,47 +422,58 @@ def _download_frames(
             on="channel", index=time_col, values="value"
         )
     else:
-        # CSV reserves "timestamp" for the clock. Give a data channel of that name
-        # a distinct wire header, then restore it (and any tag-expanded columns).
-        timestamp_alias = _get_exported_timestamp_channel(names)
-        request = compute_export_request(
-            workspace, job.channels, start, end, job.tags, job.buckets, job.resolution, timestamp_alias
-        )
-        csv_schema = dict(schema)
-        if "timestamp" in schema:
-            csv_schema[timestamp_alias] = csv_schema.pop("timestamp")
+        # Compute appends "_tag_value" to grouped columns. Private column IDs let us
+        # recover the declared type even if channel names themselves contain underscores.
+        wire_channels = {str(i): ch for i, ch in enumerate(job.channels)}
+        request = compute_export_request(workspace, wire_channels, start, end, job.tags, job.buckets, job.resolution)
         with download_export(client, request) as file:
-            df = pl.read_csv(file, schema_overrides={**csv_schema, "timestamp": pl.Int64}, raise_if_empty=False)
-        if df.is_empty():
-            return []
-        renames = {"timestamp": time_col}
-        if "timestamp" in schema:
-            renames.update(
-                {
-                    col: "timestamp" + col[len(timestamp_alias) :]
-                    for col in df.columns
-                    if col == timestamp_alias or (col.startswith(timestamp_alias + "_") and col not in schema)
-                }
-            )
-        df = df.rename(renames)
+            csv = pl.read_csv(file, infer_schema=False, schema_overrides={"timestamp": pl.Int64}, raise_if_empty=False)
+        if csv.is_empty():
+            return [pl.DataFrame(schema={time_col: pl.Int64, **schema})] if join_batches else []
+        columns = [pl.col("timestamp").alias(time_col)]
+        for column in csv.columns:
+            if column == "timestamp":
+                continue
+            wire_name, separator, tags = column.partition("_")
+            name = wire_channels[wire_name].name
+            output_name = name + separator + tags
+            if separator and output_name in schema:
+                raise ValueError(f"Tag-expanded column {output_name!r} matches a requested channel name")
+            columns.append(pl.col(column).cast(schema[name]).alias(output_name))
+        df = csv.select(columns)
     df = df.with_columns(pl.lit(None, dtype=schema[name]).alias(name) for name in names if name not in df.columns)
     known = {time_col, *names}
     return [df.select(time_col, *names, *(col for col in df.columns if col not in known)).sort(time_col)]
 
 
-def _merge_dfs(dfs: Sequence[pl.DataFrame], time_col: str) -> pl.DataFrame:
-    if len(dfs) == 1:
-        return dfs[0]
-    # Temporal subdivisions stack vertically. Independent channel groups align on timestamp.
-    by_columns: dict[frozenset[str], list[pl.DataFrame]] = collections.defaultdict(list)
-    for df in dfs:
-        by_columns[frozenset(df.columns)].append(df)
-    groups = iter(by_columns.values())
-    first = next(groups)
-    merged = pl.concat([df.lazy().select(first[0].columns) for df in first])
-    for group in groups:
-        other = pl.concat([df.lazy().select(group[0].columns) for df in group])
-        merged = merged.join(other, on=time_col, how="full", coalesce=True)
+def _join_window(
+    futures: Mapping[concurrent.futures.Future[list[pl.DataFrame]], _ExportJob], time_col: str
+) -> pl.DataFrame:
+    # Group temporal subdivisions by their requested channels. Tag-expanded columns
+    # may change between files. A single job can return separate SQL and compute frames.
+    by_group: dict[tuple[str, ...], list[concurrent.futures.Future[list[pl.DataFrame]]]] = collections.defaultdict(list)
+    for future, job in futures.items():
+        by_group[tuple(ch.name for ch in job.channels)].append(future)
+    groups: list[pl.DataFrame] = []
+    for jobs in by_group.values():
+        frames = [df for future in jobs for df in future.result()]
+        if len(jobs) > 1:
+            groups.append(pl.concat(frames, how="diagonal"))
+        else:
+            groups.extend(frames)
+    if len(groups) == 1:
+        return groups[0]
+
+    names = [name for group in groups for name in group.columns if name != time_col]
+    if len(names) != len(set(names)):
+        raise ValueError("Export jobs returned overlapping column names. Use join_batches=False.")
+    # Polars uses a temporary right-hand clock even with coalesce=True.
+    suffix = "_right"
+    while time_col + suffix in names:
+        suffix += "_right"
+    merged = groups[0].lazy()
+    for group in groups[1:]:
+        merged = merged.join(group.lazy(), on=time_col, how="full", coalesce=True, suffix=suffix)
     return merged.sort(time_col).collect()
 
 
@@ -653,14 +523,11 @@ class PolarsExportHandler:
         buckets: int | None = None,
         resolution: IntegralNanosecondsDuration | None = None,
         batch_duration: datetime.timedelta | None = None,
-    ) -> Mapping[_TimeRange, Sequence[_ExportJob]]:
-        """Compute the mapping of export time slices to the sequence of export jobs to produce data for that range.
+    ) -> Iterator[list[_ExportJob]]:
+        """Plan channel groups once and yield jobs for successive output windows.
 
         `channels` is expected to be already filtered to exportable data types by the caller.
         """
-        if buckets is not None and resolution is not None:
-            raise ValueError("Cannot provide `buckets` and `resolution`")
-
         matches = list(
             _channels_with_data_and_cardinality(
                 channels,
@@ -672,30 +539,19 @@ class PolarsExportHandler:
             )
         )
         if not matches:
-            return {}
+            return
         need_rates = time_range.duration_ns() > 0 and (batch_duration is None or self._points_per_request is not None)
         points_per_second: dict[tuple[str, str], float] = {}
         if need_rates:
-            rates = _channel_points_per_second(
+            points_per_second = _estimate_export_rates(
                 self._client,
                 [ch for ch, _ in matches],
                 time_range.start_time,
                 time_range.end_time,
                 tags,
                 num_workers=self._num_workers,
+                require_all=self._points_per_request is not None,
             )
-            points_per_second = {key: rate for key, rate in rates.items() if rate}
-            unknown = [(ch.data_source, ch.name) for ch, _ in matches if rates.get((ch.data_source, ch.name)) is None]
-            if unknown:
-                if not points_per_second or self._points_per_request is not None:
-                    raise RuntimeError(
-                        f"Could not size export jobs for {len(unknown)} channels. "
-                        "Specify batch_duration and omit points_per_request to export without rate estimates."
-                    )
-                # Sizing is approximate. Keep confirmed channels whose estimate failed, using
-                # the highest observed rate instead of silently omitting part of the export.
-                peak = max(points_per_second.values())
-                points_per_second.update(dict.fromkeys(unknown, peak))
 
         raw_datasets: set[str] = set()
         if buckets is None and resolution is None:
@@ -709,11 +565,9 @@ class PolarsExportHandler:
                 and ds.default_group_by_and_aggregation_config is None
             }
 
-        batch_duration_ns = _compute_batch_duration(
-            batch_duration, time_range, points_per_second, self._points_per_dataframe
+        duration_ns = time_range.batch_duration_ns(
+            batch_duration, sum(points_per_second.values()), self._points_per_dataframe
         )
-        time_slices = time_range.subdivide_ns(max(1, batch_duration_ns))
-        batch_timedelta = datetime.timedelta(seconds=batch_duration_ns / 1e9)
 
         raw_tables: dict[tuple[str, ChannelDataType | None], str] = {
             (ch.data_source, ch.data_type): _RAW_TABLES[ch.data_type]
@@ -725,7 +579,9 @@ class PolarsExportHandler:
         ambiguous_channels = {
             (ch.data_source, ch.name)
             for ch, single in matches
-            if single is False and len(time_slices) > 1 and (ch.data_source, ch.data_type) in raw_tables
+            if single is False
+            and time_range.duration_ns() > duration_ns
+            and (ch.data_source, ch.data_type) in raw_tables
         }
         channels_by_datasource: dict[tuple[str, str | None], list[Channel]] = collections.defaultdict(list)
         for channel, single_series in matches:
@@ -739,48 +595,60 @@ class PolarsExportHandler:
             )
             channels_by_datasource[channel.data_source, table].append(channel)
 
-        jobs: dict[_TimeRange, list[_ExportJob]] = collections.defaultdict(list)
-        for (_, raw_table), ds_channels in channels_by_datasource.items():
-            for group, step_ns in self._channel_groups(ds_channels, points_per_second, batch_timedelta):
+        groups = []
+        for (_, table), channels_in_source in channels_by_datasource.items():
+            for group, step_ns in self._channel_groups(channels_in_source, points_per_second, duration_ns):
                 to_check = frozenset(ch.name for ch in group if (ch.data_source, ch.name) in ambiguous_channels)
-                # A window check is useful when it can eliminate a separate compute job.
-                group_table = raw_table if len(to_check) < len(group) else None
-                for window in time_slices:
-                    subdivisions = window.subdivide_ns(step_ns) if step_ns is not None else (window,)
-                    for bounds in subdivisions:
-                        job = _ExportJob(
-                            channels=group,
-                            raw_table=group_table,
-                            ambiguous_channels=to_check if group_table else frozenset(),
-                            time_slice=bounds,
-                            tags=tags or {},
-                            buckets=buckets,
-                            resolution=resolution,
-                        )
-                        jobs[window].extend(job.fit_query_limit())
-        return jobs
+                # Rechecking ambiguous channels only helps when they can join a raw export.
+                raw_table = table if len(to_check) < len(group) else None
+                template = _ExportJob(
+                    channels=group,
+                    time_slice=time_range,
+                    tags=tags or {},
+                    buckets=buckets,
+                    resolution=resolution,
+                    raw_table=raw_table,
+                    ambiguous_channels=to_check,
+                )
+                groups.append((template, step_ns))
+        if not groups:
+            return
+        for window in time_range.subdivide_ns(duration_ns):
+            jobs: list[_ExportJob] = []
+            for template, step in groups:
+                subdivisions = window.subdivide_ns(step) if step is not None else (window,)
+                for bounds in subdivisions:
+                    jobs.extend(dataclasses.replace(template, time_slice=bounds).fit_query_limit())
+            yield jobs
 
     def _channel_groups(
         self,
         channels: Sequence[Channel],
-        points_per_second: Mapping[tuple[str, str], float],
-        batch_duration: datetime.timedelta,
+        rates: Mapping[tuple[str, str], float],
+        duration_ns: int,
     ) -> Iterator[tuple[Sequence[Channel], int | None]]:
-        """Yield channel groups and any shorter window required by an explicit per-job budget."""
-        if self._points_per_request is None or not points_per_second:
-            for group in batched(channels, self._channels_per_request):
-                yield group, None
+        """Pack channels by estimated rate, splitting oversized channels into shorter jobs."""
+        if self._points_per_request is None or not rates:
+            for batch in batched(channels, self._channels_per_request):
+                yield batch, None
             return
-        channels_by_key = {(ch.data_source, ch.name): ch for ch in channels}
-        rates = {key: points_per_second[key] for key in channels_by_key}
-        groups, large_channels = _build_channel_groups(
-            rates, channels_by_key, self._points_per_request, self._channels_per_request, batch_duration
-        )
-        for grouped_channels in groups:
-            yield grouped_channels, None
-        for channel in large_channels:
+
+        allowed_rate = self._points_per_request * 1e9 / duration_ns
+        group: list[Channel] = []
+        group_rate = 0.0
+        for channel in sorted(channels, key=lambda ch: rates[ch.data_source, ch.name], reverse=True):
             rate = rates[channel.data_source, channel.name]
-            yield [channel], max(1, int(1e9 * self._points_per_request / rate))
+            if rate > allowed_rate:
+                yield [channel], max(1, int(self._points_per_request * 1e9 / rate))
+                continue
+            if group and (group_rate + rate > allowed_rate or len(group) == self._channels_per_request):
+                yield group, None
+                group = []
+                group_rate = 0.0
+            group.append(channel)
+            group_rate += rate
+        if group:
+            yield group, None
 
     def export(
         self,
@@ -802,7 +670,7 @@ class PolarsExportHandler:
         during iteration, including after earlier batches have been yielded.
 
         Args:
-            channels: Channels to export.
+            channels: Channels to export. Joined frames require distinct channel names.
             start: Start of the export time range (nanoseconds UTC).
             end: End of the export time range (nanoseconds UTC).
             tags: Exact tags to match. Export sizing uses the :ref:`compute-filter-limits`.
@@ -831,7 +699,7 @@ class PolarsExportHandler:
             raise ValueError("Cannot export data decimated with both buckets and resolution")
 
         # Exclude channels with unsupported data types
-        supported_channels = [ch for ch in channels if ch.data_type in _EXPORTABLE_DATA_TYPES]
+        supported_channels = [ch for ch in channels if ch.data_type in _POLARS_TYPES]
         unsupported = len(channels) - len(supported_channels)
         if unsupported:
             logger.warning("Could not determine datatypes of %d channels -- ignoring for export", unsupported)
@@ -843,49 +711,55 @@ class PolarsExportHandler:
         if (resolution is not None and resolution < 1) or (buckets is not None and buckets < 1):
             raise ValueError("Decimation resolution and bucket count must be positive")
 
+        names = [channel.name for channel in supported_channels]
+        if join_batches:
+            duplicates = [name for name, count in collections.Counter(names).items() if count > 1]
+            if duplicates:
+                raise ValueError(f"Duplicate channel names {duplicates!r} in joined export. Use join_batches=False.")
+
         # Determine download schedule
         export_jobs = self._compute_export_jobs(
             supported_channels, _TimeRange(start, end), tags or {}, buckets, resolution, batch_duration
         )
-        time_column = _get_exported_timestamp_channel([ch.name for ch in supported_channels])
+        time_column = _get_exported_timestamp_channel(names)
         yield from self._export_dataframes(export_jobs, time_column, timestamp_type, join_batches)
 
     def _export_dataframes(
         self,
-        export_jobs: Mapping[_TimeRange, Sequence[_ExportJob]],
+        export_jobs: Iterator[list[_ExportJob]],
         time_column: str,
         timestamp_type: _AnyExportableTimestampType,
         join_batches: bool,
     ) -> Iterator[pl.DataFrame]:
-        windows = collections.deque(sorted(export_jobs))
+        jobs = next(export_jobs, None)
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=self._num_workers)
         try:
-            pending: collections.deque[list[concurrent.futures.Future[list[pl.DataFrame]]]] = collections.deque()
+            pending: collections.deque[dict[concurrent.futures.Future[list[pl.DataFrame]], _ExportJob]] = (
+                collections.deque()
+            )
             queued_jobs = 0
             while True:
-                while windows:
-                    jobs = export_jobs[windows[0]]
+                while jobs is not None:
                     # Keep one window ahead. For unjoined frames, use spare worker slots for
                     # later windows when the current windows contain only a few jobs.
                     if len(pending) >= 2 and (join_batches or queued_jobs + len(jobs) > self._num_workers):
                         break
-                    windows.popleft()
                     pending.append(
-                        [pool.submit(_export_job, job, self._client, time_column, join_batches) for job in jobs]
+                        {pool.submit(_export_job, job, self._client, time_column, join_batches): job for job in jobs}
                     )
                     queued_jobs += len(jobs)
+                    jobs = next(export_jobs, None)
                 if not pending:
                     return
-                results: list[pl.DataFrame] = []
                 futures = pending.popleft()
                 queued_jobs -= len(futures)
-                for future in futures if join_batches else concurrent.futures.as_completed(futures):
-                    if join_batches:
-                        results.extend(future.result())
-                    else:
+                if join_batches:
+                    joined = _join_window(futures, time_column)
+                    if not joined.is_empty():
+                        yield _format_time_col(joined, time_column, timestamp_type)
+                else:
+                    for future in concurrent.futures.as_completed(futures):
                         for frame in future.result():
                             yield _format_time_col(frame, time_column, timestamp_type)
-                if results:
-                    yield _format_time_col(_merge_dfs(results, time_column), time_column, timestamp_type)
         finally:
             pool.shutdown(cancel_futures=True)

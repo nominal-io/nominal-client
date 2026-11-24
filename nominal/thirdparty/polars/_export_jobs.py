@@ -47,13 +47,12 @@ def raw_export_query(table: str, channels: Sequence[Channel], start: int, end: i
 
 def compute_export_request(
     workspace: str,
-    channels: Sequence[Channel],
+    channels: Mapping[str, Channel],
     start: int,
     end: int,
     tags: Mapping[str, str],
     buckets: int | None,
     resolution: int | None,
-    timestamp_alias: str,
 ) -> jobs.CreateExportJobRequest:
     if buckets is not None:
         spacing = data.ExportResolution(bucket_count=buckets)
@@ -75,10 +74,10 @@ def compute_export_request(
         time_domain=data.TimeDomainColumns(
             columns=[
                 data.ExportColumn(
-                    name=timestamp_alias if ch.name == "timestamp" else ch.name,
+                    name=name,
                     series=ch._to_proto_compute_series(tags),
                 )
-                for ch in channels
+                for name, ch in channels.items()
             ],
             gap_fill=data.GapFill(leave_empty=data.LeaveEmpty()),
             timestamp_format=data.ExportTimestampFormat(
@@ -113,7 +112,9 @@ def download_export(client: NominalClient, request: jobs.CreateExportJobRequest)
         raise RuntimeError(f"Export job {export_id} did not return a single downloadable file")
     with tempfile.TemporaryFile() as file:
         try:
-            with requests.get(job.files[0].download_url, stream=True, timeout=(10, 120)) as response:
+            with requests.get(
+                job.files[0].download_url, stream=True, timeout=(10, 120), verify=client._clients.trust_store_path
+            ) as response:
                 if response.status_code != 200:
                     raise RuntimeError(f"Export job {export_id} download returned HTTP {response.status_code}")
                 shutil.copyfileobj(response.raw, file, length=1024 * 1024)
