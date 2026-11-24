@@ -481,6 +481,7 @@ def test_incompatible_result_type_raises(output: str) -> None:
         ("BIGINT", dt.int64),
         ("DOUBLE", dt.float64),
         ("TIMESTAMP", dt.Timestamp(timezone="UTC", scale=9)),
+        ("VARIANT", dt.string),
     ],
 )
 def test_catalog_scalar_types(client: NominalClient, scalar: str, expected: dt.DataType) -> None:

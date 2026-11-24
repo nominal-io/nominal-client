@@ -36,6 +36,8 @@ _CATALOG_SCALAR_TYPES: dict[int, ibis_datatypes.DataType] = {
     sql_pb2.SQL_CATALOG_SCALAR_TYPE_INTEGER: ibis_datatypes.Int32(),
     sql_pb2.SQL_CATALOG_SCALAR_TYPE_BOOLEAN: ibis_datatypes.Boolean(),
     sql_pb2.SQL_CATALOG_SCALAR_TYPE_VARCHAR: ibis_datatypes.String(),
+    # VARIANT values arrive as JSON text.
+    sql_pb2.SQL_CATALOG_SCALAR_TYPE_VARIANT: ibis_datatypes.String(),
 }
 
 
