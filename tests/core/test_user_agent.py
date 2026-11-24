@@ -1,6 +1,5 @@
 import pytest
 
-from nominal.core._utils import api_tools
 from nominal.core._utils.api_tools import construct_user_agent_string, detect_ai_agent
 
 
@@ -9,7 +8,7 @@ from nominal.core._utils.api_tools import construct_user_agent_string, detect_ai
     [
         ({}, "none"),
         ({"AI_AGENT": "claude-code_2-1-326_agent"}, "claude-code_2-1-326_agent"),
-        ({"AI_AGENT": "devin@1", "CLAUDECODE": "1"}, "devin@1"),
+        ({"AI_AGENT": "devin@1", "CLAUDECODE": "1"}, "devin_1"),
         ({"AI_AGENT": "0", "CLAUDECODE": "1"}, "none"),
         ({"AI_AGENT": "  ", "CLAUDECODE": "1"}, "claude-code"),
         ({"CODEX_THREAD_ID": "019a"}, "codex"),
@@ -32,7 +31,7 @@ def test_detect_ai_agent_sanitizes_value_for_user_agent() -> None:
 
 def test_user_agent_always_reports_agent_detection(monkeypatch: pytest.MonkeyPatch) -> None:
     """The detection result is appended as a product token, including "none" when no agent was found."""
-    monkeypatch.setattr(api_tools, "detect_ai_agent", lambda: "codex")
+    monkeypatch.setenv("AI_AGENT", "codex")
     assert construct_user_agent_string().endswith(" ai-agent/codex")
-    monkeypatch.setattr(api_tools, "detect_ai_agent", lambda: "none")
+    monkeypatch.setenv("AI_AGENT", "0")
     assert construct_user_agent_string().endswith(" ai-agent/none")
