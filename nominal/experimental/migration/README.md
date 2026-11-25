@@ -52,6 +52,10 @@ nom migrate prep \
 Pass `--add-label` once for each label to be added, for example `--add-label migrated --add-label batch-1`.
 The labels are written to `add_labels` in the generated config.
 
+Pass `--include-dataset-files` to count the ingested files on every in-scope dataset (datasets reached
+through an asset plus standalone datasets) and set `include_dataset_files: true` in the generated config.
+This lists files once per dataset, so prep takes longer on tenants with many datasets.
+
 The generated config lists every non-archived dataset that has no data scope on a non-archived asset
 under `standalone_dataset_rids`, so those datasets migrate too. This includes datasets whose only asset
 is archived. Remove any you don't want to migrate.

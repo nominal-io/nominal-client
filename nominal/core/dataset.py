@@ -134,7 +134,7 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
             bounds_fields = [
                 ("Start", _display.timestamp(self.bounds.start)),
                 ("End", _display.timestamp(self.bounds.end)),
-                ("Duration", _display.duration(self.bounds.end - self.bounds.start)),
+                ("Duration", _display.duration(self.bounds.duration)),
             ]
         # The files load once, for their section and for the diagram.
         files = _display.start(self._first_files)
