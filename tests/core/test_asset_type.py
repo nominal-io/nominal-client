@@ -243,6 +243,6 @@ def test_unsupported_update_response_leaves_previous_snapshot_intact() -> None:
     clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(
         type=asset_pb2.Type(rid=kind.rid, name="After", incoming_links=[asset_pb2.LinkDefinition(rid="future")])
     )
-    with pytest.raises(ValueError, match="^Unknown data requirements for asset type 'type-rid'$"):
+    with pytest.raises(ValueError, match="^Unknown asset-type link kind for link 'future'$"):
         kind.update(name="After")
     assert kind.name == "Before"
