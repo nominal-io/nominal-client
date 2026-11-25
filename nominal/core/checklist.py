@@ -45,6 +45,9 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
     commit_id: str | None = None
     """Loaded version ID; pass explicitly to execution to pin a review. None for unloaded manual instances."""
 
+    asset_type_rids: Sequence[str] = ()
+    """RIDs of the asset types associated with this checklist."""
+
     class _Clients(DataReview._Clients, Protocol):
         @property
         def checklist(self) -> scout_checks_api.ChecklistService: ...
@@ -72,6 +75,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
             _clients=clients,
             author_rid=checklist.metadata.author_rid,
             commit_id=checklist.commit.id,
+            asset_type_rids=tuple(checklist.metadata.asset_type_rids),
         )
 
     @_display.card

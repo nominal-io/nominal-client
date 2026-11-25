@@ -7,7 +7,12 @@ from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.networking import HeaderProvider
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
-from nominal.core.asset_type import AssetType, AssetTypeProperty, AssetTypePropertyValueType
+from nominal.core.asset_type import (
+    AssetType,
+    AssetTypeProperty,
+    AssetTypePropertyValueType,
+    SeriesType,
+)
 from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
 from nominal.core.channel import (
@@ -143,6 +148,7 @@ __all__ = [
     "SearchEventOriginType",
     "Secret",
     "SecureWebhookIntegrationDetails",
+    "SeriesType",
     "set_display_options",
     "SlackInstanceType",
     "SlackWebhookIntegrationDetails",

@@ -2,16 +2,18 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from nominal_api import scout_checks_api, scout_versioning_api
 
-from nominal.core import Asset, Priority
+from nominal.core import Asset, AssetType, Priority
 from nominal.core._utils.query_tools import (
     ArchiveStatusFilter,
     create_search_ingest_jobs_query,
     create_search_users_query,
 )
-from nominal.core.client import NominalClient
+from nominal.core.client import NominalClient, WorkspaceSearchType
 from nominal.core.ingestion_job import IngestionJobStatus
 from nominal.core.user import User
+from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.authentication.users.v1 import users_pb2
 from nominal.protos.event.v2 import event_pb2
 from nominal.protos.run.v1 import run_service_pb2
@@ -44,6 +46,88 @@ def test_search_runs_asset_and_prefix_filters(use_object: bool) -> None:
         run_service_pb2.SearchQuery(run_prefix="FLIGHT"),
         run_service_pb2.SearchQuery(workspace="workspace"),
     ]
+
+
+def test_empty_type_selection_matches_no_runs_or_checklists() -> None:
+    """An empty selection must never issue an unrestricted search."""
+    clients = MagicMock()
+    client = NominalClient(_clients=clients)
+    assert client.search_runs(asset_types=[]) == []
+    assert client.search_checklists(asset_types=[]) == []
+    clients.run.SearchRuns.assert_not_called()
+    clients.checklist.search.assert_not_called()
+
+
+def test_search_runs_with_multiple_asset_types() -> None:
+    """Combine mixed asset type objects and RIDs into a single run filter alongside the run prefix."""
+    clients = MagicMock()
+    clients.run.SearchRuns.return_value = run_service_pb2.SearchRunsResponse()
+    client = NominalClient(_clients=clients)
+    kind = AssetType._from_proto(clients, asset_pb2.Type(rid="airframe"))
+
+    client.search_runs(asset_types=[kind, "engine"], run_prefix="FT", workspace=WorkspaceSearchType.ALL)
+
+    queries = clients.run.SearchRuns.call_args.args[0].query.all_of.queries
+    assert run_service_pb2.SearchQuery(run_prefix="FT") in queries
+    assert (
+        run_service_pb2.SearchQuery(asset_types=run_service_pb2.AssetTypesFilter(asset_types=["airframe", "engine"]))
+        in queries
+    )
+
+
+def test_search_runs_treats_a_single_type_rid_as_one_filter_value() -> None:
+    """A bare RID denotes one asset type even though Python strings are sequences."""
+    clients = MagicMock()
+    clients.run.SearchRuns.return_value = run_service_pb2.SearchRunsResponse()
+    NominalClient(_clients=clients).search_runs(asset_types="engine", workspace=WorkspaceSearchType.ALL)
+    clauses = clients.run.SearchRuns.call_args.args[0].query.all_of.queries
+    assert [list(clause.asset_types.asset_types) for clause in clauses if clause.HasField("asset_types")] == [
+        ["engine"]
+    ]
+
+
+def test_search_checklists_with_multiple_asset_types() -> None:
+    """Keep published and label constraints when searching for checklists applicable to both types."""
+    clients = MagicMock()
+    hit = scout_checks_api.SearchVersionedChecklist(
+        rid="checklist",
+        checks=[],
+        commit=scout_versioning_api.Commit(
+            id="rev",
+            resource_rid="checklist",
+            is_working_state=False,
+            message="",
+            committed_by="user",
+            committed_at="now",
+        ),
+        metadata=scout_checks_api.ChecklistMetadata(
+            asset_type_rids=["airframe", "engine", "pump"],
+            assignee_rid="user",
+            author_rid="user",
+            created_at="now",
+            description="",
+            is_archived=False,
+            is_published=True,
+            labels=["preflight"],
+            properties={},
+            title="Preflight",
+        ),
+    )
+    clients.checklist.search.return_value = scout_checks_api.SearchVersionedChecklistPage(values=[hit])
+    client = NominalClient(_clients=clients)
+    kind = AssetType._from_proto(clients, asset_pb2.Type(rid="airframe"))
+
+    (checklist,) = client.search_checklists(
+        asset_types=[kind, "engine"], labels=["preflight"], workspace=WorkspaceSearchType.ALL
+    )
+
+    assert tuple(checklist.asset_type_rids) == ("airframe", "engine", "pump")
+    assert checklist.commit_id == "rev"
+
+    clauses = clients.checklist.search.call_args.args[1].query.and_
+    assert any(clause.asset_types == ["airframe", "engine"] for clause in clauses)
+    assert any(clause.label == "preflight" for clause in clauses)
+    assert any(clause.is_published for clause in clauses)
 
 
 def test_search_events_priority_preserves_asset_scope() -> None:

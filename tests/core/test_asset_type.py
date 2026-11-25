@@ -1,10 +1,11 @@
 from unittest.mock import MagicMock
 
+import grpc
 import pytest
 
-from nominal.core import AssetType, AssetTypeProperty, AssetTypePropertyValueType, NominalClient
+from nominal.core import AssetType, AssetTypeProperty, AssetTypePropertyValueType, NominalClient, SeriesType
 from nominal.core._utils.query_tools import ArchiveStatusFilter
-from nominal.exceptions import NominalNotFoundError
+from nominal.exceptions import NominalFailedPreconditionError, NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.types import types_pb2
 
@@ -61,7 +62,7 @@ def test_search_types_paginates_and_scopes_query() -> None:
         asset_pb2.SearchTypesResponse(results=[asset_pb2.Type(rid="b")]),
     ]
     result = NominalClient(_clients=clients).search_asset_types(
-        "Pump", workspace="workspace-1", archive_status=ArchiveStatusFilter.ANY
+        "Pump", property_names=["Power", "model"], workspace="workspace-1", archive_status=ArchiveStatusFilter.ANY
     )
     assert [t.rid for t in result] == ["a", "b"]
     first, second = [call.args[0] for call in clients.assets.SearchTypes.call_args_list]
@@ -71,6 +72,8 @@ def test_search_types_paginates_and_scopes_query() -> None:
         assert list(getattr(request.query, "and").queries) == [
             asset_pb2.SearchTypesQuery(search_text="Pump"),
             asset_pb2.SearchTypesQuery(workspace="workspace-1"),
+            asset_pb2.SearchTypesQuery(property="Power"),
+            asset_pb2.SearchTypesQuery(property="model"),
         ]
         assert set(request.archived_statuses.archived_statuses) == {
             types_pb2.ARCHIVED,
@@ -116,3 +119,94 @@ def test_unknown_property_rule_is_not_silently_weakened() -> None:
         AssetTypeProperty._from_proto(asset_pb2.PropertyConfig(value_type=99, requirement=asset_pb2.REQUIRED))
     with pytest.raises(ValueError, match="requirement"):
         AssetTypeProperty._from_proto(asset_pb2.PropertyConfig(value_type=asset_pb2.STRING, requirement=99))
+
+
+def test_series_requirement_replacement_distinguishes_never_set_and_cleared() -> None:
+    """Requirements use exact channel names, and an explicit clear survives a read."""
+    clients = MagicMock()
+    client = NominalClient(_clients=clients)
+    clients.resolve_default_workspace_rid.return_value = "workspace"
+    required = {"engine/RPM": SeriesType.NUMERIC, "events": SeriesType.LOG}
+    defined = asset_pb2.DataRequirements(
+        series=asset_pb2.SeriesRequirements(
+            series=[
+                asset_pb2.SeriesRequirement(name="engine/RPM", type=asset_pb2.SeriesRequirement.NUMERIC),
+                asset_pb2.SeriesRequirement(name="events", type=asset_pb2.SeriesRequirement.LOG),
+            ]
+        )
+    )
+    raw = asset_pb2.Type(rid="kind", data_requirements=defined)
+    clients.assets.CreateType.return_value = asset_pb2.CreateTypeResponse(type=raw)
+    kind = client.create_asset_type("Engine", primary_key="serial", required_series=required)
+    assert clients.assets.CreateType.call_args.args[0].data_requirements == defined
+    assert kind.required_series == required
+    assert AssetType._from_proto(clients, asset_pb2.Type(rid="legacy")).required_series is None
+
+    clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(type=raw)
+    kind.update(name="Renamed")
+    assert not clients.assets.UpdateType.call_args.args[0].HasField("data_requirements")
+
+    clients.assets.UpdateType.reset_mock()
+    with pytest.raises(ValueError, match="DOUBLE"):
+        kind.update(required_series={"engine/RPM": "DOUBLE"})  # type: ignore[dict-item]
+    clients.assets.UpdateType.assert_not_called()
+
+    empty = asset_pb2.DataRequirements(series=asset_pb2.SeriesRequirements())
+    clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(
+        type=asset_pb2.Type(rid="kind", data_requirements=empty)
+    )
+    kind.update(required_series={})
+    assert clients.assets.UpdateType.call_args.args[0].data_requirements == empty
+    assert kind.required_series == {}
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        asset_pb2.Type(data_requirements=asset_pb2.DataRequirements()),
+        asset_pb2.Type(
+            data_requirements=asset_pb2.DataRequirements(
+                series=asset_pb2.SeriesRequirements(series=[asset_pb2.SeriesRequirement(name="speed", type=99)])
+            )
+        ),
+    ],
+)
+def test_unknown_definition_cannot_be_accidentally_cleared(raw) -> None:
+    """Reading an unsupported definition fails before callers can overwrite its rules."""
+    with pytest.raises(ValueError):
+        AssetType._from_proto(MagicMock(), raw)
+
+
+def test_delete_type_reports_failed_precondition(fake_rpc_error) -> None:
+    """A checklist reference prevents deletion and remains a translated service error."""
+    clients = MagicMock()
+    clients.assets.DeleteType.side_effect = fake_rpc_error(
+        grpc.StatusCode.FAILED_PRECONDITION, "checklist references type"
+    )
+    kind = AssetType._from_proto(clients, asset_pb2.Type(rid="kind"))
+    with pytest.raises(NominalFailedPreconditionError, match="checklist references type"):
+        kind.delete()
+    assert clients.assets.DeleteType.call_args.args[0].type_rid == "kind"
+
+
+def test_unsupported_create_response_identifies_the_created_type() -> None:
+    """An unsupported response reports the RID callers need to recover the created type."""
+    clients = MagicMock()
+    clients.resolve_default_workspace_rid.return_value = "workspace"
+    clients.assets.CreateType.return_value = asset_pb2.CreateTypeResponse(
+        type=asset_pb2.Type(rid="created-rid", data_requirements=asset_pb2.DataRequirements())
+    )
+    with pytest.raises(ValueError, match="^Unknown data requirements for asset type 'created-rid'$"):
+        NominalClient(_clients=clients).create_asset_type("Pump", primary_key="serial")
+
+
+def test_unsupported_update_response_leaves_previous_snapshot_intact() -> None:
+    """A successful write with an unreadable response keeps the prior local snapshot."""
+    clients = MagicMock()
+    kind = AssetType._from_proto(clients, asset_pb2.Type(rid="type-rid", name="Before"))
+    clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(
+        type=asset_pb2.Type(rid=kind.rid, name="After", data_requirements=asset_pb2.DataRequirements())
+    )
+    with pytest.raises(ValueError, match="^Unknown data requirements for asset type 'type-rid'$"):
+        kind.update(name="After")
+    assert kind.name == "Before"

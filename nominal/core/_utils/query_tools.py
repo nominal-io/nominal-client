@@ -337,8 +337,11 @@ def create_search_checklists_query(
     author: str | None = None,
     assignee: str | None = None,
     workspace_rid: str | None = None,
+    asset_type_rids: Sequence[str] | None = None,
 ) -> scout_checks_api.ChecklistSearchQuery:
     queries = [scout_checks_api.ChecklistSearchQuery(is_published=True)]
+    if asset_type_rids:
+        queries.append(scout_checks_api.ChecklistSearchQuery(asset_types=list(asset_type_rids)))
     if search_text is not None:
         queries.append(scout_checks_api.ChecklistSearchQuery(search_text=search_text))
     if labels is not None:
@@ -440,8 +443,13 @@ def create_search_runs_query(  # noqa: PLR0912
     asset_rid: str | None = None,
     run_prefix: str | None = None,
     workspace_rid: str | None = None,
+    asset_type_rids: Sequence[str] | None = None,
 ) -> run_service_pb2.SearchQuery:
     queries = []
+    if asset_type_rids:
+        queries.append(
+            run_service_pb2.SearchQuery(asset_types=run_service_pb2.AssetTypesFilter(asset_types=asset_type_rids))
+        )
     if asset_rid is not None:
         queries.append(run_service_pb2.SearchQuery(assets=run_service_pb2.AssetsFilter(assets=[asset_rid])))
     if run_prefix is not None:

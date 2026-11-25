@@ -6,13 +6,27 @@ from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Self, Sequence
 
 from nominal.core._clientsbunch import HasScoutParams
-from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
+from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
 from nominal.core._utils.pagination_tools import DEFAULT_PAGE_SIZE, paginate_grpc
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
+
+
+class SeriesType(Enum):
+    """The kind of telemetry required by an asset type.
+
+    NUMERIC accepts double, int64, and uint64 channels.
+    """
+
+    NUMERIC = "NUMERIC"
+    STRING = "STRING"
+    LOG = "LOG"
+    NUMERIC_ARRAY = "NUMERIC_ARRAY"
+    STRING_ARRAY = "STRING_ARRAY"
+    STRUCT = "STRUCT"
 
 
 class AssetTypePropertyValueType(Enum):
@@ -63,6 +77,23 @@ class AssetTypeProperty:
         return cls(value_type=value_type, required=value.requirement == asset_pb2.REQUIRED)
 
 
+def _data_requirements_to_proto(
+    required_series: Mapping[str, SeriesType] | None,
+) -> asset_pb2.DataRequirements | None:
+    if required_series is None:
+        return None
+    return asset_pb2.DataRequirements(
+        series=asset_pb2.SeriesRequirements(
+            series=[
+                asset_pb2.SeriesRequirement(
+                    name=name, type=asset_pb2.SeriesRequirement.SeriesType.Value(SeriesType(kind).value)
+                )
+                for name, kind in required_series.items()
+            ]
+        )
+    )
+
+
 @dataclass(frozen=True)
 class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
     """An asset identity definition and the property rules its members must satisfy.
@@ -70,9 +101,11 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
     The primary key names a required nonempty string property, unique among active
     assets of this type. Other property definitions are stored in ``properties``.
 
-    Reading a definition with an unknown property value type or requirement raises
-    ``ValueError``, including during search, refresh, or update. Unsupported rules
-    are never interpreted as weaker constraints.
+    Required series are checked when the type is attached. A type with no data
+    requirements ever set has ``required_series=None``.
+
+    Reading an unsupported property rule, data requirement, or series type
+    raises ``ValueError``, including during search, refresh, or update.
     """
 
     rid: str
@@ -84,6 +117,7 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
     is_archived: bool
     icon_name: str | None
     _clients: _Clients = field(repr=False)
+    required_series: Mapping[str, SeriesType] | None = None
 
     class _Clients(HasScoutParams, Protocol):
         @property
@@ -106,19 +140,27 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
         primary_key: str | None = None,
         properties: Mapping[str, AssetTypeProperty] | None = None,
         icon_name: str | None = None,
+        required_series: Mapping[str, SeriesType] | None = None,
     ) -> Self:
         """Replace supplied definition fields and refresh this instance in place.
 
         ``None`` leaves a field unchanged; an empty properties mapping removes all
         additional property rules. The primary key is separate from those rules.
-        The server rejects definitions incompatible with existing active members,
-        and primary-key renames once the type has memberships.
+        The server rejects property rules incompatible with existing active
+        members and primary-key renames once the type has memberships.
+
+        Pass an empty mapping to clear required series. Existing members are
+        not rechecked.
 
         Raises:
             NominalError: If the definition is invalid or the update fails.
+            ValueError: If a supplied series kind is unsupported, before the request is sent.
+                Also raised if the update succeeded but the SDK could not read the returned definition.
+                This instance retains its previous snapshot.
         """
         request = asset_pb2.UpdateTypeRequest(
             type_rid=self.rid,
+            data_requirements=_data_requirements_to_proto(required_series),
             name=name,
             description=description,
             primary_key=primary_key,
@@ -132,6 +174,16 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
         with translate_grpc_errors():
             response = self._clients.assets.UpdateType(request)
         return self._refresh_from_api(response.type)
+
+    def delete(self) -> None:
+        """Permanently delete this type and its incoming and outgoing link definitions.
+
+        Raises:
+            NominalPermissionDeniedError: If an asset uses the type, including an archived asset.
+            NominalFailedPreconditionError: If a checklist references the type.
+        """
+        with translate_grpc_errors():
+            self._clients.assets.DeleteType(asset_pb2.DeleteTypeRequest(type_rid=self.rid))
 
     def archive(self) -> None:
         """Archive this type. Call ``refresh()`` to update the local snapshot.
@@ -148,7 +200,18 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
 
     @classmethod
     def _from_proto(cls, clients: _Clients, raw: asset_pb2.Type) -> Self:
+        required_series = None
+        if raw.HasField("data_requirements"):
+            if raw.data_requirements.WhichOneof("requirements") != "series":
+                raise ValueError(f"Unknown data requirements for asset type {raw.rid!r}")
+            required_series = MappingProxyType(
+                {
+                    item.name: SeriesType(asset_pb2.SeriesRequirement.SeriesType.Name(item.type))
+                    for item in raw.data_requirements.series.series
+                }
+            )
         return cls(
+            required_series=required_series,
             rid=raw.rid,
             name=raw.name,
             description=raw.description if raw.HasField("description") else None,
@@ -161,6 +224,14 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
             icon_name=raw.icon_name if raw.HasField("icon_name") else None,
             _clients=clients,
         )
+
+
+def _search_type_rids(types: AssetType | str | Sequence[AssetType | str] | None) -> list[str] | None:
+    if types is None:
+        return None
+    if isinstance(types, (AssetType, str)):
+        return [rid_from_instance_or_string(types)]
+    return [rid_from_instance_or_string(kind) for kind in types]
 
 
 def _get_asset_type(clients: AssetType._Clients, rid: str) -> asset_pb2.Type:
@@ -184,12 +255,15 @@ def _search_asset_types(
     search_text: str | None,
     workspace_rid: str | None,
     archive_status: ArchiveStatusFilter,
+    property_names: str | Sequence[str],
 ) -> Iterable[AssetType]:
     queries = []
     if search_text is not None:
         queries.append(asset_pb2.SearchTypesQuery(search_text=search_text))
     if workspace_rid is not None:
         queries.append(asset_pb2.SearchTypesQuery(workspace=workspace_rid))
+    names = (property_names,) if isinstance(property_names, str) else property_names
+    queries.extend(asset_pb2.SearchTypesQuery(property=name) for name in names)
     query = asset_pb2.SearchTypesQuery(
         **{"and": asset_pb2.SearchTypesQueryList(queries=queries)}  # type: ignore[arg-type]
     )
