@@ -55,6 +55,8 @@ jobs:
   # Writes the test coverage to the run's summary page. It only reports: there is no minimum.
   coverage:
     runs-on: depot-ubuntu-24.04
+    outputs:
+      summary: ${{ steps.summary.outputs.markdown }}
     steps:
       # fetch-depth: 2 required — the coverage steps compare HEAD with its first parent
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -90,6 +92,7 @@ jobs:
             echo "::warning::The base branch could not be measured, so the coverage summary has no comparison."
           fi
       - name: Summarize test coverage
+        id: summary
         run: |
           uv run coverage json --quiet -o "$RUNNER_TEMP/coverage.json"
           args=("$RUNNER_TEMP/coverage.json")
@@ -102,7 +105,45 @@ jobs:
           if [ -f "$RUNNER_TEMP/coverage-base.json" ]; then
             args+=(--base "$RUNNER_TEMP/coverage-base.json")
           fi
-          uv run python .github/scripts/coverage_summary.py "${args[@]}" >> "$GITHUB_STEP_SUMMARY"
+          uv run python .github/scripts/coverage_summary.py "${args[@]}" > "$RUNNER_TEMP/summary.md"
+          cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          # The comment job posts the same text. A random delimiter means no line of the text can end the output.
+          delimiter="$(openssl rand -hex 16)"
+          {
+            echo "markdown<<$delimiter"
+            cat "$RUNNER_TEMP/summary.md"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
+  # Posts the coverage summary as one comment on the pull request, and updates that comment on later runs.
+  # This job can write to pull requests, so it runs no code of the pull request: it only posts the text.
+  coverage-comment:
+    needs: coverage
+    # A pull request from a fork gets a read-only token, so there only the summary page has the coverage.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: depot-ubuntu-24.04-small
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Post or update the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Store in an environment to guard against script injection
+          SUMMARY: ${{ needs.coverage.outputs.summary }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          marker="<!-- coverage-summary -->"
+          comments="repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments"
+          mine=".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id"
+          id=$(gh api "$comments" --paginate --jq "$mine" | head -n 1)
+          if [ -n "$id" ]; then
+            request=(--method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id")
+          else
+            request=(--method POST "$comments")
+          fi
+          # The summary page has the same text, so a comment that can't be posted must not fail the job.
+          gh api "${request[@]}" -f body="$marker"$'\n'"$SUMMARY" > /dev/null \
+            || echo "::warning::The coverage comment could not be posted."
 
   build-packages:
     runs-on: depot-ubuntu-24.04-small
