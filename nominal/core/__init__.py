@@ -1,5 +1,3 @@
-from nominal_api.scout_asset_api import SeriesType
-
 from nominal.core._checklist_types import Priority
 from nominal.core._display import DisplayOptions, get_display_options, set_display_options
 from nominal.core._event_types import EventType, SearchEventOriginType
@@ -149,7 +147,6 @@ __all__ = [
     "SearchEventOriginType",
     "Secret",
     "SecureWebhookIntegrationDetails",
-    "SeriesType",
     "set_display_options",
     "SlackInstanceType",
     "SlackWebhookIntegrationDetails",
