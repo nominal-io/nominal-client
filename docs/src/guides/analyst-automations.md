@@ -96,6 +96,10 @@ Use {py:func}`~nominal.experimental.analyst.get_automation_run` to resume observ
 {py:meth}`~nominal.experimental.analyst.AutomationRun.cancel` requests cancellation and refreshes
 the snapshot; refresh again until it reaches a terminal state.
 
+For exact nanosecond timestamps and other large integers, send a decimal string or split the value
+into integer seconds and nanoseconds. The payload uses double-precision numbers. The SDK raises
+`ValueError` before submission if an integer would lose precision.
+
 ## Use a skill
 
 {py:meth}`~nominal.experimental.analyst.Skill.as_prompt` formats a skill selection without executing

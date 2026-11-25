@@ -1,6 +1,6 @@
 # Analyst
 
-Manage workspace skills and their reference files.
+Manage workspace skills, their reference files, and Analyst automations.
 These APIs are experimental and may change between releases.
 
 Import from `nominal.experimental.analyst`. Creation and lookup functions take an authenticated

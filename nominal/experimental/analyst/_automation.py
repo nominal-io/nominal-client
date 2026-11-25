@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import uuid
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -11,6 +12,18 @@ from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin
 from nominal.experimental.analyst._automation_run import AutomationRun
 from nominal.protos.ai.v1 import analyst_automation_pb2 as api
 from nominal.ts import IntegralNanosecondsUTC
+
+
+def _check_payload_numbers(value: object) -> None:
+    """Struct stores all JSON numbers as binary64 doubles."""
+    if isinstance(value, Mapping):
+        for item in value.values():
+            _check_payload_numbers(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _check_payload_numbers(item)
+    elif isinstance(value, int) and (abs(value) > sys.float_info.max or float(value) != value):
+        raise ValueError("Payload integer loses precision as a JSON number. Send its exact digits as a string.")
 
 
 @dataclass(frozen=True)
@@ -109,7 +122,10 @@ class Automation(HasRid, RefreshableGrpcMixin[api.Automation]):
     def delete(self) -> None:
         """Delete the definition and stop future schedules/webhooks; retain its run history.
 
-        Uses this snapshot's revision. Already admitted runs are not canceled by this call.
+        Already admitted runs retain their history and can continue executing.
+
+        Raises:
+            nominal.exceptions.NominalConflictError: The saved revision has changed. Refresh before retrying.
         """
         self._clients.analyst_automations.call(
             "DeleteAutomation",
@@ -129,8 +145,16 @@ class Automation(HasRid, RefreshableGrpcMixin[api.Automation]):
 
         Returns:
             The admitted or rejected run. Check its status and refresh to observe execution.
+
+        Raises:
+            ValueError: An integer in the payload cannot be represented exactly as a double. Send it as a string.
+            nominal.exceptions.NominalConflictError: The saved revision has changed. Refresh before submitting
+                a new request.
         """
-        encoded = None if payload is None else json_format.ParseDict(dict(payload), struct_pb2.Struct())
+        encoded = None
+        if payload is not None:
+            _check_payload_numbers(payload)
+            encoded = json_format.ParseDict(dict(payload), struct_pb2.Struct())
         response = self._clients.analyst_automations.call(
             "CreateAutomationRun",
             api.CreateAutomationRunRequest(

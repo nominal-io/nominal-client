@@ -9,26 +9,20 @@ import requests
 from conjure_python_client import ServiceConfiguration
 from google.protobuf.message import Message
 
+from nominal.core._utils.grpc_tools import _GRPC_STATUS_TO_EXCEPTION
 from nominal.core._utils.networking import HeaderProvider, create_multipart_request_session
 from nominal.exceptions import (
     NominalAuthenticationError,
     NominalConflictError,
     NominalError,
-    NominalFailedPreconditionError,
-    NominalInvalidArgumentError,
-    NominalNotFoundError,
     NominalPermissionDeniedError,
     NominalRequestThrottledError,
 )
 
 _Response = TypeVar("_Response", bound=Message)
 _ERRORS: dict[str, type[NominalError]] = {
-    "unauthenticated": NominalAuthenticationError,
-    "permission_denied": NominalPermissionDeniedError,
-    "not_found": NominalNotFoundError,
+    **{status.name.lower(): error for status, error in _GRPC_STATUS_TO_EXCEPTION.items()},
     "aborted": NominalConflictError,
-    "invalid_argument": NominalInvalidArgumentError,
-    "failed_precondition": NominalFailedPreconditionError,
     "resource_exhausted": NominalRequestThrottledError,
 }
 
@@ -50,8 +44,9 @@ class _AutomationTransport:
         self._timeout = (config.connect_timeout, config.read_timeout)
         self._session = create_multipart_request_session(num_retries=0, header_provider=header_provider)
         self._session.headers["User-Agent"] = user_agent
-        if config.security is not None and config.security.trust_store_path is not None:
-            self._session.verify = config.security.trust_store_path
+        # Explicit Authorization headers must win over ambient .netrc credentials.
+        self._session.auth = lambda prepared: prepared
+        self._ca_bundle = config.security.trust_store_path if config.security is not None else None
         self._jwt: str | None = None
         self._expires_at = 0.0
         self._auth_lock = threading.Lock()
@@ -66,6 +61,7 @@ class _AutomationTransport:
             },
             data=data,
             timeout=self._timeout,
+            verify=self._ca_bundle,
             allow_redirects=False,
         ) as response:
             if response.status_code != 200:

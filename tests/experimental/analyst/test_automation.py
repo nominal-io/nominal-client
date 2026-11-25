@@ -41,6 +41,25 @@ def test_conflict_keeps_snapshot_unchanged() -> None:
     assert automation.enabled
 
 
+@pytest.mark.parametrize("value", [1_700_000_000_000_000_001, -(2**53 + 1), 10**400])
+def test_run_rejects_lossy_nested_integers_before_dispatch(value: int) -> None:
+    clients = MagicMock()
+    automation = Automation._from_proto(clients, api.Automation(automation_rid="auto"))
+    with pytest.raises(ValueError, match="precision"):
+        automation.run(payload={"events": [{"timestamp_ns": value}]})
+    clients.analyst_automations.call.assert_not_called()
+
+
+def test_run_preserves_exact_large_integer_and_string_nanoseconds() -> None:
+    clients = MagicMock()
+    clients.analyst_automations.call.return_value = api.CreateAutomationRunResponse()
+    automation = Automation._from_proto(clients, api.Automation(automation_rid="auto"))
+    automation.run(payload={"exact": 2**60, "timestamp_ns": "1700000000000000001"})
+    request = clients.analyst_automations.call.call_args.args[1]
+    assert request.payload["exact"] == 2**60
+    assert request.payload["timestamp_ns"] == "1700000000000000001"
+
+
 def test_run_preserves_payload_and_explicit_retry_id() -> None:
     """A manual run pins the snapshot revision and carries the caller's idempotency key."""
     clients = MagicMock()
