@@ -1,6 +1,6 @@
 # Streaming
 
-Write timeseries data and log messages through asynchronous streams.
+Write points with coordinates, stream timeseries data and send log messages.
 
 ## API Reference
 

@@ -119,6 +119,7 @@ Analyst skills <guides/skills>
 
 Overview <guides/streaming/overview>
 Logs <guides/streaming/logs>
+Points with coordinates <guides/streaming/points>
 Trigger alerts <guides/streaming/streaming-checklists>
 ```
 

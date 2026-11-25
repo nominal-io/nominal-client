@@ -76,11 +76,11 @@ jobs:
         run: |
           python3 -m json.tool release-please-config.json
           python3 -m json.tool .release-please-manifest.json
-      # Validates config structure only — targets the PR branch, not main,
-      # so the computed version bump is not meaningful here.
+      # Validates the checked-out commit, including fork PRs. Local mode switches
+      # to main, so capture the commit before invoking release-please.
       - name: Dry-run release-please
         run: |
-          TARGET="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          TARGET="$(git rev-parse HEAD)"
           npx release-please release-pr \
             --dry-run \
             --local \
