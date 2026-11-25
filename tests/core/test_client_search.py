@@ -96,7 +96,7 @@ def test_search_checklists_with_multiple_asset_types() -> None:
             id="rev",
             resource_rid="checklist",
             is_working_state=False,
-            message="",
+            message="Add preflight checks",
             committed_by="user",
             committed_at="now",
         ),
@@ -123,6 +123,7 @@ def test_search_checklists_with_multiple_asset_types() -> None:
 
     assert tuple(checklist.asset_type_rids) == ("airframe", "engine", "pump")
     assert checklist.commit_id == "rev"
+    assert checklist.commit_message == "Add preflight checks"
 
     clauses = clients.checklist.search.call_args.args[1].query.and_
     assert any(clause.asset_types == ["airframe", "engine"] for clause in clauses)

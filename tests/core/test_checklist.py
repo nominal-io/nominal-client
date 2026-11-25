@@ -6,7 +6,7 @@ import pytest
 from nominal_api import scout_checklistexecution_api as api
 from nominal_api import scout_checks_api, scout_integrations_api, scout_run_api, scout_versioning_api
 
-from nominal.core import Asset, Checklist, Integration, NominalClient, WorkspaceSearchType
+from nominal.core import Asset, Checklist, Integration, NominalClient
 from nominal.core import streaming_checklist as streaming
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.integrations.v1 import integrations_pb2
@@ -289,20 +289,6 @@ def test_get_checklist_keeps_the_commit_message_verbatim(mock_clients):
     loaded = NominalClient(mock_clients).get_checklist("checklist")
 
     assert loaded.commit_message == message
-
-
-def test_search_checklists_carries_commit_messages_without_extra_requests(mock_clients):
-    """Search exposes each result's commit message from the search response alone."""
-    hits = [
-        scout_checks_api.SearchVersionedChecklist(rid=hit.rid, checks=[], commit=hit.commit, metadata=hit.metadata)
-        for hit in (_versioned_checklist("Initial checks"), _versioned_checklist("Raise limit"))
-    ]
-    mock_clients.checklist.search.return_value = scout_checks_api.SearchVersionedChecklistPage(values=hits)
-
-    found = NominalClient(mock_clients).search_checklists(workspace=WorkspaceSearchType.ALL)
-
-    assert [result.commit_message for result in found] == ["Initial checks", "Raise limit"]
-    mock_clients.checklist.get.assert_not_called()
 
 
 def test_checklist_refresh_replaces_the_commit_message_in_place(mock_clients):
