@@ -174,9 +174,7 @@ def test_pps_supported_types_produce_positive_rates(
         results=[make_compute_result(success=response)]
     )
 
-    result = _batch_channel_points_per_second(
-        mock_client, [make_channel("ch", data_type)], 0, TWENTY_SECONDS_NS, {}, 100
-    )
+    result = _batch_channel_points_per_second(mock_client, [make_channel("ch", data_type)], 0, TWENTY_SECONDS_NS, {})
 
     rate = result[("ds-1", "ch")]
     assert rate is not None and rate > 0
@@ -190,7 +188,7 @@ def test_pps_unsupported_type_raises(mock_client, make_channel):
     """
     with pytest.raises(ValueError):
         _batch_channel_points_per_second(
-            mock_client, [make_channel("mystery", ChannelDataType.UNKNOWN)], 0, TEN_SECONDS_NS, {}, 100
+            mock_client, [make_channel("mystery", ChannelDataType.UNKNOWN)], 0, TEN_SECONDS_NS, {}
         )
 
 
@@ -204,14 +202,14 @@ def test_pps_empty_success_returns_none(mock_client, make_channel, make_compute_
         results=[make_compute_result(success=None, error=None)]
     )
 
-    result = _batch_channel_points_per_second(mock_client, [make_channel("empty")], 0, TEN_SECONDS_NS, {}, 100)
+    result = _batch_channel_points_per_second(mock_client, [make_channel("empty")], 0, TEN_SECONDS_NS, {})
 
     assert result == {("ds-1", "empty"): None}
 
 
 def test_pps_empty_channels_skips_api(mock_client):
     """An empty channel list returns empty results without calling the compute API."""
-    result = _batch_channel_points_per_second(mock_client, [], 0, TEN_SECONDS_NS, {}, 100)
+    result = _batch_channel_points_per_second(mock_client, [], 0, TEN_SECONDS_NS, {})
 
     assert result == {}
     mock_client._clients.compute.BatchComputeWithUnits.assert_not_called()
@@ -222,7 +220,7 @@ def test_pps_api_failure_returns_none_for_all(mock_client, make_channel):
     mock_client._clients.compute.BatchComputeWithUnits.side_effect = RuntimeError("API down")
 
     result = _batch_channel_points_per_second(
-        mock_client, [make_channel("a"), make_channel("b")], 0, TEN_SECONDS_NS, {}, 100
+        mock_client, [make_channel("a"), make_channel("b")], 0, TEN_SECONDS_NS, {}
     )
 
     assert result == {("ds-1", "a"): None, ("ds-1", "b"): None}
@@ -240,7 +238,7 @@ def test_pps_per_channel_error_returns_none_for_failed(
     )
 
     result = _batch_channel_points_per_second(
-        mock_client, [make_channel("good"), make_channel("bad")], 0, TWENTY_SECONDS_NS, {}, 100
+        mock_client, [make_channel("good"), make_channel("bad")], 0, TWENTY_SECONDS_NS, {}
     )
 
     good_rate = result[("ds-1", "good")]
@@ -484,6 +482,45 @@ def test_raw_parquet_uses_typed_points_and_skips_rate_sampling(
     mock_client._clients.compute.BatchComputeWithUnits.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("point_target", "join_batches", "buckets", "fixed_windows"),
+    [
+        pytest.param(None, False, None, True, id="native"),
+        pytest.param(25_000_000, False, None, False, id="explicit-frame-target"),
+        pytest.param(None, True, None, False, id="joined"),
+        pytest.param(None, False, 100, False, id="decimated"),
+    ],
+)
+def test_automatic_window_sizing(
+    mock_client,
+    mock_clients,
+    make_channel,
+    make_series_count_response,
+    make_enriched_dataset,
+    make_numeric_response,
+    make_compute_result,
+    point_target,
+    join_batches,
+    buckets,
+    fixed_windows,
+):
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
+    mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
+    sample = mock_client._clients.compute.BatchComputeWithUnits
+    sample.return_value = MagicMock(results=[make_compute_result(success=make_numeric_response([10]))])
+    end = 130_000_000_000
+    plan = PolarsExportHandler(mock_client, points_per_dataframe=point_target)._compute_export_jobs(
+        [make_channel("signal")], _TimeRange(0, end), join_batches=join_batches, buckets=buckets
+    )
+    bounds = [job.time_slice for window in plan for job in window]
+    if fixed_windows:
+        assert bounds == [_TimeRange(0, 119_999_999_999), _TimeRange(120_000_000_000, end)]
+        sample.assert_not_called()
+    else:
+        assert bounds == [_TimeRange(0, end)]
+        sample.assert_called_once()
+
+
 def test_raw_jobs_require_plain_dataset_and_single_series(
     mock_client, mock_clients, make_channel, make_enriched_dataset, make_series_count_response
 ):
@@ -542,7 +579,6 @@ def test_unjoined_raw_frames_follow_exact_sample_times(
             [make_channel(name, ChannelDataType.INT) for name in names],
             0,
             4,
-            batch_duration=datetime.timedelta(seconds=1),
             join_batches=False,
             timestamp_type=Relative("nanoseconds", 0),
         )

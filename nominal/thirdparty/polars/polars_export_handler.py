@@ -46,6 +46,7 @@ DEFAULT_NUM_WORKERS = 8
 DEFAULT_POINTS_PER_DATAFRAME = 25_000_000
 DEFAULT_POINTS_PER_REQUEST = 1_000_000  # Previous per-request target, available for callers that opt into it.
 DEFAULT_CHANNELS_PER_REQUEST = 256
+_NATIVE_BATCH_DURATION = datetime.timedelta(minutes=2)
 _RATE_SAMPLE_CHANNELS = 200
 _SERIES_COUNT_BATCH_SIZE = 40
 
@@ -124,44 +125,10 @@ def _batch_channel_points_per_second(
     start_ns: IntegralNanosecondsUTC,
     end_ns: IntegralNanosecondsUTC,
     tags: dict[str, str],
-    num_buckets: int,
 ) -> Mapping[tuple[str, str], float | None]:
-    """For each provided channel, determine the peak points per second in the given range.
-
-    Supports all channel data types (DOUBLE, INT, STRING) by building the appropriate
-    compute series for each and submitting a single BatchComputeWithUnitsRequest.
-
-    Note:
-        Not intended for direct use — see `_estimate_export_rates`.
-
-    Note:
-        Do not use with more than 300 channels, or 500 concurrently across all requests.
-
-    Args:
-        client: Nominal request client
-        channels: Channels to query data rates for (must be DOUBLE, INT, or STRING)
-        start_ns: Start of the time range to query over
-        end_ns: End of the time range to query over
-        tags: Key-value pairs of tags to filter data with
-        num_buckets: Number of buckets to use — more typically leads to better results.
-
-            **Note:** Max number of buckets allowed is 1000.
-
-    Returns:
-        Mapping of (data_source, channel_name) to peak points/second. A value of `None`
-        indicates the backend failed to compute a rate for that channel (e.g. transient
-        error); `0.0` indicates the compute succeeded but returned no buckets.
-
-    Raises:
-        ValueError: If any channel has an unsupported data type (not DOUBLE/INT/STRING).
-    """
+    """Estimate peak samples/second per channel. A failed estimate is None and an empty series is zero."""
     if not channels:
         return {}
-    elif num_buckets > MAX_NUM_BUCKETS:
-        raise ValueError(f"num_buckets ({num_buckets}) must be <= {MAX_NUM_BUCKETS}")
-
-    # _to_compute_series raises ValueError for unsupported types; callers are expected to
-    # pre-filter to DOUBLE/INT/STRING channels (see _compute_export_jobs).
     series_list = [channel._to_proto_compute_series(tags=tags) for channel in channels]
 
     api_start = _SecondsNanos.from_nanoseconds(start_ns).to_proto()
@@ -169,7 +136,7 @@ def _batch_channel_points_per_second(
 
     try:
         summarization = execution_options_pb2.SeriesSummarization(
-            bucket_count=execution_options_pb2.BucketCountSummary(bucket_count=num_buckets)
+            bucket_count=execution_options_pb2.BucketCountSummary(bucket_count=100)
         )
         request = compute_pb2.BatchComputeWithUnitsRequest(
             inputs=[
@@ -229,7 +196,6 @@ def _estimate_export_rates(
         start_ns=start_ns,
         end_ns=end_ns,
         tags=dict(tags or {}),
-        num_buckets=100,
     )
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(num_workers, 2)) as pool:
         rates = {
@@ -474,6 +440,29 @@ def _join_window(results: Sequence[tuple[_ExportJob, list[pl.DataFrame]]], time_
     return merged.sort(time_col).collect()
 
 
+def _raw_series_by_channel(
+    client: NominalClient, matches: Sequence[tuple[Channel, bool | None]]
+) -> dict[tuple[str, str], bool]:
+    """Return the single-series flags for channels that can read raw stored points.
+
+    A false flag requires another series check when the job covers a shorter time range.
+    """
+    clients = client._clients
+    dataset_rids = {ch.data_source for ch, single in matches if single is not None}
+    raw_datasets = {
+        ds.rid
+        for ds in _get_datasets(clients.auth_header, clients.catalog, dataset_rids)
+        if ds.derived_definition is None
+        and ds.external_connection_metadata is None
+        and ds.default_group_by_and_aggregation_config is None
+    }
+    return {
+        (ch.data_source, ch.name): single
+        for ch, single in matches
+        if single is not None and ch.data_source in raw_datasets
+    }
+
+
 class PolarsExportHandler:
     """Streams data out of Nominal into Polars DataFrames.
 
@@ -487,7 +476,7 @@ class PolarsExportHandler:
         self,
         client: NominalClient,
         points_per_request: int | None = None,
-        points_per_dataframe: int = DEFAULT_POINTS_PER_DATAFRAME,
+        points_per_dataframe: int | None = None,
         channels_per_request: int = DEFAULT_CHANNELS_PER_REQUEST,
         num_workers: int = DEFAULT_NUM_WORKERS,
     ):
@@ -497,11 +486,14 @@ class PolarsExportHandler:
             client: Client whose selected workspace owns the export.
             points_per_request: Optional sample budget per job. Setting it enables rate estimation
                 even when the export specifies a batch duration.
-            points_per_dataframe: Target number of samples per yielded window when sizing it automatically.
+            points_per_dataframe: Optional target sample count per window. Setting it requests
+                rate-based sizing when ``batch_duration`` is omitted.
             channels_per_request: Maximum number of channels in one job.
             num_workers: Maximum number of jobs processed concurrently.
         """
-        if min(points_per_dataframe, channels_per_request, num_workers) < 1:
+        if min(channels_per_request, num_workers) < 1 or (
+            points_per_dataframe is not None and points_per_dataframe < 1
+        ):
             raise ValueError("Frame size, channel count, and worker count must be positive")
         if points_per_request is not None and points_per_request < 1:
             raise ValueError("points_per_request must be positive")
@@ -520,6 +512,8 @@ class PolarsExportHandler:
         buckets: int | None = None,
         resolution: IntegralNanosecondsDuration | None = None,
         batch_duration: datetime.timedelta | None = None,
+        *,
+        join_batches: bool = True,
     ) -> Iterator[Iterator[_ExportJob]]:
         """Plan channel groups once and yield jobs for successive output windows.
 
@@ -537,56 +531,46 @@ class PolarsExportHandler:
         )
         if not matches:
             return
-        need_rates = time_range.duration_ns() > 0 and (batch_duration is None or self._points_per_request is not None)
+        raw_series = _raw_series_by_channel(self._client, matches) if buckets is None and resolution is None else {}
+        channels = [ch for ch, _ in matches]
+        if (
+            batch_duration is None
+            and not join_batches
+            and self._points_per_dataframe is None
+            and self._points_per_request is None
+            and all((ch.data_source, ch.name) in raw_series for ch in channels)
+        ):
+            batch_duration = _NATIVE_BATCH_DURATION
+
         points_per_second: dict[tuple[str, str], float] = {}
-        if need_rates:
+        if time_range.duration_ns() > 0 and (batch_duration is None or self._points_per_request is not None):
             points_per_second = _estimate_export_rates(
                 self._client,
-                [ch for ch, _ in matches],
+                channels,
                 time_range.start_time,
                 time_range.end_time,
                 tags,
                 num_workers=self._num_workers,
                 require_all=self._points_per_request is not None,
             )
+            channels = [ch for ch in channels if (ch.data_source, ch.name) in points_per_second]
 
         duration_ns = time_range.batch_duration_ns(
-            batch_duration, sum(points_per_second.values()), self._points_per_dataframe
+            batch_duration, sum(points_per_second.values()), self._points_per_dataframe or DEFAULT_POINTS_PER_DATAFRAME
         )
         multiple_windows = time_range.duration_ns() > duration_ns
-        # A channel with several matching series may still select one in a shorter window.
-        sql_candidates = (
-            {
-                (ch.data_source, ch.name): single
-                for ch, single in matches
-                if single is not None and (single or multiple_windows)
-            }
-            if buckets is None and resolution is None
-            else {}
-        )
-        clients = self._client._clients
-        raw_datasets = {
-            ds.rid
-            for ds in _get_datasets(clients.auth_header, clients.catalog, {rid for rid, _ in sql_candidates})
-            if ds.derived_definition is None
-            and ds.external_connection_metadata is None
-            and ds.default_group_by_and_aggregation_config is None
-        }
-
         channels_by_datasource: dict[tuple[str, str | None], list[Channel]] = collections.defaultdict(list)
-        for channel, _ in matches:
-            key = (channel.data_source, channel.name)
-            if need_rates and key not in points_per_second:
-                continue
+        for channel in channels:
+            single = raw_series.get((channel.data_source, channel.name))
             table = None
-            if key in sql_candidates and channel.data_source in raw_datasets and channel.data_type is not None:
+            if channel.data_type is not None and (single or (single is False and multiple_windows)):
                 table = _RAW_TABLES[channel.data_type]
             channels_by_datasource[channel.data_source, table].append(channel)
 
         groups = []
         for (_, table), channels_in_source in channels_by_datasource.items():
             for group, step_ns in self._channel_groups(channels_in_source, points_per_second, duration_ns):
-                to_check = frozenset(ch.name for ch in group if sql_candidates.get((ch.data_source, ch.name)) is False)
+                to_check = frozenset(ch.name for ch in group if raw_series.get((ch.data_source, ch.name)) is False)
                 template = _ExportJob(
                     channels=group,
                     time_slice=time_range,
@@ -663,8 +647,10 @@ class PolarsExportHandler:
             start: Start of the export time range (nanoseconds UTC).
             end: End of the export time range (nanoseconds UTC).
             tags: Exact tags to match. Export sizing uses the :ref:`compute-filter-limits`.
-            batch_duration: Explicit per-batch time window. If omitted, one is computed
-                from total channel rate and `points_per_dataframe`.
+            batch_duration: Time covered by each output window. With no explicit size options,
+                unjoined full-resolution exports use two-minute windows when all channels have
+                known series counts in stored datasets without a default aggregation. Other exports
+                estimate the window from the channel rates, targeting 25 million samples by default.
             timestamp_type: Output timestamp representation (`epoch_seconds`, `iso8601`, etc.).
             buckets: Decimate each channel to at most this many buckets per request. Mutually
                 exclusive with `resolution`.
@@ -713,7 +699,13 @@ class PolarsExportHandler:
 
         # Determine download schedule
         export_jobs = self._compute_export_jobs(
-            supported_channels, _TimeRange(start, end), tags or {}, buckets, resolution, batch_duration
+            supported_channels,
+            _TimeRange(start, end),
+            tags or {},
+            buckets,
+            resolution,
+            batch_duration,
+            join_batches=join_batches,
         )
         time_column = _get_exported_timestamp_channel(names)
         yield from self._export_dataframes(export_jobs, time_column, timestamp_type, join_batches)
