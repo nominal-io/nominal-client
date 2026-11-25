@@ -623,6 +623,23 @@ def test_mixed_raw_job_resolves_ambiguous_channels_for_its_own_window(
     ]
 
 
+def test_multifile_channel_can_use_sql_on_its_own(
+    mock_client, mock_clients, make_channel, make_enriched_dataset, make_series_count_response
+):
+    """Resolve a channel independently of its peers, and send a still-ambiguous window to compute."""
+    channel = make_channel("fast")
+    counts = mock_clients.datasource.batch_get_series_count
+    counts.side_effect = [make_series_count_response([count]) for count in (3, 1, 2)]
+    mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
+    windows = PolarsExportHandler(mock_client)._compute_export_jobs(
+        [channel], _TimeRange(0, TWENTY_SECONDS_NS - 1), batch_duration=datetime.timedelta(seconds=10)
+    )
+    assert [source.raw_table for window in windows for job in window for source in job.resolve_sources()] == [
+        "points_double",
+        None,
+    ]
+
+
 def test_missing_series_count_uses_compute(mock_client, mock_clients, make_channel, make_series_count_response):
     mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([None, 0])
     plan = PolarsExportHandler(mock_client)._compute_export_jobs(

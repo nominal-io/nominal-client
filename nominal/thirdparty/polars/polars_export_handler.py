@@ -298,18 +298,16 @@ class _ExportJob:
 
         candidates = [ch for ch in self.channels if ch.name in self.ambiguous_channels]
         compute_names = {ch.name for ch in candidates}
-        # Splitting oversized SQL can leave a job with only ambiguous channels.
-        if candidates and len(candidates) < len(self.channels):
-            start = _SecondsNanos.from_nanoseconds(self.time_slice.start_time).to_api()
-            end = _SecondsNanos.from_nanoseconds(self.time_slice.end_time).to_api()
-            filters = build_compute_tag_filter(self.tags)
-            for group in batched(candidates, _SERIES_COUNT_BATCH_SIZE):
-                try:
-                    matches = _batch_check_channels_have_data(group[0]._clients, group, filters, start, end)
-                except Exception:
-                    logger.debug("Using compute after a window series check failed", exc_info=True)
-                    continue
-                compute_names.difference_update(ch.name for ch, single in matches if single)
+        start = _SecondsNanos.from_nanoseconds(self.time_slice.start_time).to_api()
+        end = _SecondsNanos.from_nanoseconds(self.time_slice.end_time).to_api()
+        filters = build_compute_tag_filter(self.tags)
+        for group in batched(candidates, _SERIES_COUNT_BATCH_SIZE):
+            try:
+                matches = _batch_check_channels_have_data(group[0]._clients, group, filters, start, end)
+            except Exception:
+                logger.debug("Using compute after a window series check failed", exc_info=True)
+                continue
+            compute_names.difference_update(ch.name for ch, single in matches if single)
         if not compute_names:
             yield self
             return
@@ -552,61 +550,50 @@ class PolarsExportHandler:
                 require_all=self._points_per_request is not None,
             )
 
-        raw_datasets: set[str] = set()
-        if buckets is None and resolution is None:
-            dataset_rids = {ch.data_source for ch, single in matches if single}
-            clients = self._client._clients
-            raw_datasets = {
-                ds.rid
-                for ds in _get_datasets(clients.auth_header, clients.catalog, dataset_rids)
-                if ds.derived_definition is None
-                and ds.external_connection_metadata is None
-                and ds.default_group_by_and_aggregation_config is None
-            }
-
         duration_ns = time_range.batch_duration_ns(
             batch_duration, sum(points_per_second.values()), self._points_per_dataframe
         )
+        multiple_windows = time_range.duration_ns() > duration_ns
+        # A channel with several matching series may still select one in a shorter window.
+        sql_candidates = (
+            {
+                (ch.data_source, ch.name): single
+                for ch, single in matches
+                if single is not None and (single or multiple_windows)
+            }
+            if buckets is None and resolution is None
+            else {}
+        )
+        clients = self._client._clients
+        raw_datasets = {
+            ds.rid
+            for ds in _get_datasets(clients.auth_header, clients.catalog, {rid for rid, _ in sql_candidates})
+            if ds.derived_definition is None
+            and ds.external_connection_metadata is None
+            and ds.default_group_by_and_aggregation_config is None
+        }
 
-        raw_tables: dict[tuple[str, ChannelDataType | None], str] = {
-            (ch.data_source, ch.data_type): _RAW_TABLES[ch.data_type]
-            for ch, single in matches
-            if single and ch.data_type is not None and ch.data_source in raw_datasets
-        }
-        # Files can span separate series over the whole export while sharing a single
-        # matching series per window. Check only channels that could join an existing raw job.
-        ambiguous_channels = {
-            (ch.data_source, ch.name)
-            for ch, single in matches
-            if single is False
-            and time_range.duration_ns() > duration_ns
-            and (ch.data_source, ch.data_type) in raw_tables
-        }
         channels_by_datasource: dict[tuple[str, str | None], list[Channel]] = collections.defaultdict(list)
-        for channel, single_series in matches:
+        for channel, _ in matches:
             key = (channel.data_source, channel.name)
             if need_rates and key not in points_per_second:
                 continue
-            table = (
-                raw_tables.get((channel.data_source, channel.data_type))
-                if single_series or key in ambiguous_channels
-                else None
-            )
+            table = None
+            if key in sql_candidates and channel.data_source in raw_datasets and channel.data_type is not None:
+                table = _RAW_TABLES[channel.data_type]
             channels_by_datasource[channel.data_source, table].append(channel)
 
         groups = []
         for (_, table), channels_in_source in channels_by_datasource.items():
             for group, step_ns in self._channel_groups(channels_in_source, points_per_second, duration_ns):
-                to_check = frozenset(ch.name for ch in group if (ch.data_source, ch.name) in ambiguous_channels)
-                # Rechecking ambiguous channels only helps when they can join a raw export.
-                raw_table = table if len(to_check) < len(group) else None
+                to_check = frozenset(ch.name for ch in group if sql_candidates.get((ch.data_source, ch.name)) is False)
                 template = _ExportJob(
                     channels=group,
                     time_slice=time_range,
                     tags=tags or {},
                     buckets=buckets,
                     resolution=resolution,
-                    raw_table=raw_table,
+                    raw_table=table,
                     ambiguous_channels=to_check,
                 )
                 groups.append((template, step_ns))
