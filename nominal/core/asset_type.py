@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Iterable, Mapping, Protocol, Self, Sequence
+from typing import Iterable, Mapping, Protocol, Self, Sequence, TypeAlias
 
-from nominal_api.scout_asset_api import SeriesType
+from nominal_api import scout_asset_api
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from_instance_or_string
@@ -15,6 +15,9 @@ from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.exceptions import NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
+
+SeriesType: TypeAlias = scout_asset_api.SeriesType
+"""The kind of telemetry required by an asset type. NUMERIC accepts double, int64, and uint64 channels."""
 
 
 class AssetTypePropertyValueType(Enum):

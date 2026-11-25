@@ -17,7 +17,6 @@ from nominal_api import (
     scout_template_api,
     scout_video_api,
 )
-from nominal_api.scout_asset_api import SeriesType
 from typing_extensions import deprecated
 
 from nominal._utils.iterator_tools import batched
@@ -72,6 +71,7 @@ from nominal.core.asset_type import (
     AssetType,
     AssetTypeLink,
     AssetTypeProperty,
+    SeriesType,
     _data_requirements_to_proto,
     _get_asset_type,
     _search_asset_types,
