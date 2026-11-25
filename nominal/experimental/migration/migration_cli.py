@@ -732,6 +732,12 @@ def _categorize_workbooks(workbooks: Sequence[Workbook]) -> tuple[set[str], set[
     return single, multi
 
 
+def _log_dataset_file_counts(datasets: Sequence[Dataset]) -> None:
+    file_counts = [sum(1 for _ in dataset.list_files()) for dataset in datasets]
+    logger.info("  Dataset files: %d", sum(file_counts))
+    logger.info("  Datasets with files: %d", sum(1 for count in file_counts if count > 0))
+
+
 @migrate_cmd.command(name="prep", help="Count in-scope and out-of-scope resources and generate a migration config.")
 @client_options
 @global_options
@@ -757,7 +763,23 @@ def _categorize_workbooks(workbooks: Sequence[Workbook]) -> tuple[set[str], set[
         "Pass once for each label to be added."
     ),
 )
-def prep(client: NominalClient, migration_name: str, output_path: Path, added_labels: tuple[str, ...]) -> None:
+@click.option(
+    "--include-dataset-files",
+    "include_dataset_files",
+    is_flag=True,
+    default=False,
+    help=(
+        "Count the ingested files on every in-scope dataset and set include_dataset_files: true in the "
+        "generated config. Lists files once per dataset, so prep takes longer on tenants with many datasets."
+    ),
+)
+def prep(
+    client: NominalClient,
+    migration_name: str,
+    output_path: Path,
+    added_labels: tuple[str, ...],
+    include_dataset_files: bool,
+) -> None:
     """Count resources on a tenant to determine migration scope and generate a starter config."""
     if any(not label.strip() for label in added_labels):
         raise click.BadParameter("labels must be non-empty.", param_hint="'--add-label'")
@@ -795,7 +817,7 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, added_la
     datasets = client.search_datasets()
     logger.info("  Total datasets: %d", len(datasets))
 
-    datasets_with_assets: set[str] = set()
+    datasets_with_assets: dict[str, Dataset] = {}
     videos = client.search_videos()
 
     logger.info("  Total videos: %d", len(videos))
@@ -803,7 +825,7 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, added_la
     for asset_rid in all_assets:
         asset = client.get_asset(asset_rid)
         for _data_scope, dataset in asset.list_datasets():
-            datasets_with_assets.add(dataset.rid)
+            datasets_with_assets[dataset.rid] = dataset
 
     logger.info("  Datasets with assets: %d", len(datasets_with_assets))
 
@@ -813,10 +835,15 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, added_la
 
     # Datasets with no data scope on a non-archived asset are not reached through an asset,
     # so the generated config lists them as standalone datasets.
-    orphaned_datasets: set[str] = {d.rid for d in datasets if d.rid not in datasets_with_assets}
+    orphaned_datasets: dict[str, Dataset] = {d.rid: d for d in datasets if d.rid not in datasets_with_assets}
     logger.info("  Orphaned datasets (migrated as standalone datasets): %d", len(orphaned_datasets))
     for rid in sorted(orphaned_datasets)[:3]:
         logger.info("    e.g. %s", rid)
+
+    if include_dataset_files:
+        # Copy skips archived datasets on an asset, so their files are not counted.
+        in_scope = [d for d in datasets_with_assets.values() if not d.is_archived]
+        _log_dataset_file_counts([*in_scope, *orphaned_datasets.values()])
 
     logger.info("Out-of-scope migration numbers:")
 
@@ -829,7 +856,7 @@ def prep(client: NominalClient, migration_name: str, output_path: Path, added_la
     config = {
         "migration": {
             "name": migration_name,
-            "include_dataset_files": False,
+            "include_dataset_files": include_dataset_files,
             "preserve_dataset_uuid": True,
             "include_video": True,
             "include_runs": True,

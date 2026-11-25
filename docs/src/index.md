@@ -110,7 +110,7 @@ Assets <guides/assets>
 Asset types <guides/assets/asset-types>
 Workbooks <guides/workbooks>
 Events <guides/events>
-Skills <guides/skills>
+Analyst skills <guides/skills>
 ```
 
 ```{toctree}
