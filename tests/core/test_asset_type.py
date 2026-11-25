@@ -2,10 +2,10 @@ from unittest.mock import MagicMock
 
 import grpc
 import pytest
+from nominal_api.scout_asset_api import SeriesType
 
 from nominal.core import AssetType, AssetTypeProperty, AssetTypePropertyValueType, NominalClient
 from nominal.core._utils.query_tools import ArchiveStatusFilter
-from nominal.core.asset_type import AssetTypeSeriesType
 from nominal.exceptions import NominalFailedPreconditionError, NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.types import types_pb2
@@ -127,7 +127,7 @@ def test_series_requirement_replacement_distinguishes_never_set_and_cleared() ->
     clients = MagicMock()
     client = NominalClient(_clients=clients)
     clients.resolve_default_workspace_rid.return_value = "workspace"
-    required = {"engine/RPM": AssetTypeSeriesType.NUMERIC, "events": AssetTypeSeriesType.LOG}
+    required = {"engine/RPM": SeriesType.NUMERIC, "events": SeriesType.LOG}
     defined = asset_pb2.DataRequirements(
         series=asset_pb2.SeriesRequirements(
             series=[

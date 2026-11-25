@@ -17,6 +17,7 @@ from nominal_api import (
     scout_template_api,
     scout_video_api,
 )
+from nominal_api.scout_asset_api import SeriesType
 from typing_extensions import deprecated
 
 from nominal.config import NominalConfig, _config
@@ -68,7 +69,6 @@ from nominal.core.asset import Asset, _get_asset, _get_assets
 from nominal.core.asset_type import (
     AssetType,
     AssetTypeProperty,
-    AssetTypeSeriesType,
     _data_requirements_to_proto,
     _get_asset_type,
     _search_asset_types,
@@ -1261,7 +1261,7 @@ class NominalClient:
         properties: Mapping[str, AssetTypeProperty] | None = None,
         description: str | None = None,
         icon_name: str | None = None,
-        required_series: Mapping[str, AssetTypeSeriesType] | None = None,
+        required_series: Mapping[str, SeriesType] | None = None,
     ) -> AssetType:
         """Create an asset type in this client's default workspace.
 

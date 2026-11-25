@@ -1,3 +1,5 @@
+from nominal_api.scout_asset_api import SeriesType
+
 from nominal.core._checklist_types import Priority
 from nominal.core._display import DisplayOptions, get_display_options, set_display_options
 from nominal.core._event_types import EventType, SearchEventOriginType
@@ -11,7 +13,6 @@ from nominal.core.asset_type import (
     AssetType,
     AssetTypeProperty,
     AssetTypePropertyValueType,
-    AssetTypeSeriesType,
 )
 from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
@@ -91,7 +92,6 @@ __all__ = [
     "as_files_ingested",
     "Asset",
     "AssetType",
-    "AssetTypeSeriesType",
     "AssetTypeProperty",
     "AssetTypePropertyValueType",
     "Attachment",
@@ -149,6 +149,7 @@ __all__ = [
     "SearchEventOriginType",
     "Secret",
     "SecureWebhookIntegrationDetails",
+    "SeriesType",
     "set_display_options",
     "SlackInstanceType",
     "SlackWebhookIntegrationDetails",
