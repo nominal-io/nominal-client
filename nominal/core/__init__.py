@@ -11,6 +11,7 @@ from nominal.core.asset_type import (
     AssetType,
     AssetTypeProperty,
     AssetTypePropertyValueType,
+    SeriesType,
 )
 from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
@@ -147,6 +148,7 @@ __all__ = [
     "SearchEventOriginType",
     "Secret",
     "SecureWebhookIntegrationDetails",
+    "SeriesType",
     "set_display_options",
     "SlackInstanceType",
     "SlackWebhookIntegrationDetails",
