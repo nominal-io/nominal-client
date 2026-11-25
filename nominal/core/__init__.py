@@ -13,7 +13,6 @@ from nominal.core.asset_type import (
     AssetTypeLink,
     AssetTypeProperty,
     AssetTypePropertyValueType,
-    AssetTypeSeriesType,
 )
 from nominal.core.attachment import Attachment
 from nominal.core.bounds import Bounds
@@ -94,7 +93,6 @@ __all__ = [
     "Asset",
     "AssetType",
     "AssetTypeLink",
-    "AssetTypeSeriesType",
     "AssetTypeProperty",
     "AssetTypePropertyValueType",
     "Attachment",

@@ -149,9 +149,9 @@ name. The value specifies the kind of telemetry. For example, integer and
 floating-point channels both satisfy a numeric requirement.
 
 ```python
-from nominal.core import AssetTypeSeriesType
+from nominal_api.scout_asset_api import SeriesType
 
-pump_type.update(required_series={"outlet_pressure": AssetTypeSeriesType.NUMERIC})
+pump_type.update(required_series={"outlet_pressure": SeriesType.NUMERIC})
 ```
 
 For a new pump, replace the placeholder below with the RID of a dataset that

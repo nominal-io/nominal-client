@@ -5,6 +5,8 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Iterable, Mapping, Protocol, Self, Sequence
 
+from nominal_api.scout_asset_api import SeriesType
+
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from_instance_or_string
 from nominal.core._utils.grpc_tools import translate_grpc_errors
@@ -63,26 +65,8 @@ class AssetTypeProperty:
         return cls(value_type=value_type, required=value.requirement == asset_pb2.REQUIRED)
 
 
-class AssetTypeSeriesType(Enum):
-    """The kind of channel required by an asset type.
-
-    NUMERIC includes floating-point, signed integer, and unsigned integer channels.
-    """
-
-    NUMERIC = "NUMERIC"
-    STRING = "STRING"
-    LOG = "LOG"
-    NUMERIC_ARRAY = "NUMERIC_ARRAY"
-    STRING_ARRAY = "STRING_ARRAY"
-    STRUCT = "STRUCT"
-
-    @classmethod
-    def _from_proto(cls, value: asset_pb2.SeriesRequirement.SeriesType.ValueType) -> Self:
-        return cls(asset_pb2.SeriesRequirement.SeriesType.Name(value))
-
-
 def _data_requirements_to_proto(
-    required_series: Mapping[str, AssetTypeSeriesType] | None,
+    required_series: Mapping[str, SeriesType] | None,
 ) -> asset_pb2.DataRequirements | None:
     if required_series is None:
         return None
@@ -157,7 +141,7 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
     is_archived: bool
     icon_name: str | None
     _clients: _Clients = field(repr=False)
-    required_series: Mapping[str, AssetTypeSeriesType] | None = None
+    required_series: Mapping[str, SeriesType] | None = None
     outgoing_links: tuple[AssetTypeLink, ...] = ()
     incoming_links: tuple[AssetTypeLink, ...] = ()
 
@@ -182,7 +166,7 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
         primary_key: str | None = None,
         properties: Mapping[str, AssetTypeProperty] | None = None,
         icon_name: str | None = None,
-        required_series: Mapping[str, AssetTypeSeriesType] | None = None,
+        required_series: Mapping[str, SeriesType] | None = None,
         outgoing_links: Sequence[AssetTypeLink] | None = None,
     ) -> Self:
         """Replace supplied definition fields and refresh this instance in place.
@@ -251,7 +235,10 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
             if raw.data_requirements.WhichOneof("requirements") != "series":
                 raise ValueError(f"Unknown data requirements for asset type {raw.rid!r}")
             required_series = MappingProxyType(
-                {item.name: AssetTypeSeriesType._from_proto(item.type) for item in raw.data_requirements.series.series}
+                {
+                    item.name: SeriesType(asset_pb2.SeriesRequirement.SeriesType.Name(item.type))
+                    for item in raw.data_requirements.series.series
+                }
             )
         return cls(
             required_series=required_series,
