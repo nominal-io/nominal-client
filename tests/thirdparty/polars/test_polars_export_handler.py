@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import gzip
 import io
+import json
 from concurrent.futures import Future
 from contextlib import contextmanager
 from unittest.mock import MagicMock
@@ -21,7 +22,7 @@ from nominal.protos.exportjobs.v1 import export_jobs_pb2 as jobs
 from nominal.protos.types.time import time_pb2
 from nominal.thirdparty.polars.polars_export_handler import (
     PolarsExportHandler,
-    _batch_channel_points_per_second,
+    _batch_channel_bucket_counts,
     _ExportJob,
     _extract_bucket_counts,
     _peak_points_per_second,
@@ -31,7 +32,7 @@ from nominal.ts import Relative
 
 # Note: for new test coverage, prefer testing through `PolarsExportHandler._compute_export_jobs`
 # (with MagicMock on the client fixtures) rather than direct unit tests of private helpers like
-# `_batch_channel_points_per_second`. Integration-style tests are less brittle to internal refactors.
+# `_batch_channel_bucket_counts`. Integration-style tests are less brittle to internal refactors.
 
 TEN_SECONDS_NS = 10_000_000_000
 TWENTY_SECONDS_NS = 20_000_000_000
@@ -144,7 +145,13 @@ def test_peak_pps_skips_duplicate_timestamps():
     assert _peak_points_per_second(buckets, start_ns=0, end_ns=2_000_000_000) == pytest.approx(40.0)
 
 
-# -- _batch_channel_points_per_second --
+# -- _batch_channel_bucket_counts --
+
+
+def set_storage_types(mock_client, rows):
+    mock_client._clients.resolve_default_workspace_rid.return_value = "workspace"
+    payload = "\n".join(json.dumps({"channel": name, "data_type": kind}) for name, kind in rows).encode()
+    mock_client._clients.sql.Query.return_value = [MagicMock(payload=payload)]
 
 
 @pytest.mark.parametrize(
@@ -155,7 +162,7 @@ def test_peak_pps_skips_duplicate_timestamps():
         (ChannelDataType.STRING, "enum"),
     ],
 )
-def test_pps_supported_types_produce_positive_rates(
+def test_supported_types_produce_bucket_counts(
     mock_client,
     make_channel,
     make_numeric_response,
@@ -164,7 +171,7 @@ def test_pps_supported_types_produce_positive_rates(
     data_type,
     response_kind,
 ):
-    """All supported channel types produce positive PPS from a bucketed compute response."""
+    """Numeric and categorical series preserve their counts."""
     response = (
         make_numeric_response([50, 100])
         if response_kind == "numeric"
@@ -174,10 +181,9 @@ def test_pps_supported_types_produce_positive_rates(
         results=[make_compute_result(success=response)]
     )
 
-    result = _batch_channel_points_per_second(mock_client, [make_channel("ch", data_type)], 0, TWENTY_SECONDS_NS, {})
+    result = _batch_channel_bucket_counts(mock_client, [make_channel("ch", data_type)], 0, TWENTY_SECONDS_NS, {}, 100)
 
-    rate = result[("ds-1", "ch")]
-    assert rate is not None and rate > 0
+    assert result[("ds-1", "ch")] == [(0, 50), (TEN_SECONDS_NS, 100 if response_kind == "numeric" else 10)]
 
 
 def test_pps_unsupported_type_raises(mock_client, make_channel):
@@ -187,8 +193,8 @@ def test_pps_unsupported_type_raises(mock_client, make_channel):
     single source of truth for type support rather than silently coercing to None.
     """
     with pytest.raises(ValueError):
-        _batch_channel_points_per_second(
-            mock_client, [make_channel("mystery", ChannelDataType.UNKNOWN)], 0, TEN_SECONDS_NS, {}
+        _batch_channel_bucket_counts(
+            mock_client, [make_channel("mystery", ChannelDataType.UNKNOWN)], 0, TEN_SECONDS_NS, {}, 100
         )
 
 
@@ -202,14 +208,14 @@ def test_pps_empty_success_returns_none(mock_client, make_channel, make_compute_
         results=[make_compute_result(success=None, error=None)]
     )
 
-    result = _batch_channel_points_per_second(mock_client, [make_channel("empty")], 0, TEN_SECONDS_NS, {})
+    result = _batch_channel_bucket_counts(mock_client, [make_channel("empty")], 0, TEN_SECONDS_NS, {}, 100)
 
     assert result == {("ds-1", "empty"): None}
 
 
 def test_pps_empty_channels_skips_api(mock_client):
     """An empty channel list returns empty results without calling the compute API."""
-    result = _batch_channel_points_per_second(mock_client, [], 0, TEN_SECONDS_NS, {})
+    result = _batch_channel_bucket_counts(mock_client, [], 0, TEN_SECONDS_NS, {}, 100)
 
     assert result == {}
     mock_client._clients.compute.BatchComputeWithUnits.assert_not_called()
@@ -219,8 +225,8 @@ def test_pps_api_failure_returns_none_for_all(mock_client, make_channel):
     """If the compute API raises, all channels get None PPS so callers can distinguish failure from zero-data."""
     mock_client._clients.compute.BatchComputeWithUnits.side_effect = RuntimeError("API down")
 
-    result = _batch_channel_points_per_second(
-        mock_client, [make_channel("a"), make_channel("b")], 0, TEN_SECONDS_NS, {}
+    result = _batch_channel_bucket_counts(
+        mock_client, [make_channel("a"), make_channel("b")], 0, TEN_SECONDS_NS, {}, 100
     )
 
     assert result == {("ds-1", "a"): None, ("ds-1", "b"): None}
@@ -237,12 +243,11 @@ def test_pps_per_channel_error_returns_none_for_failed(
         ]
     )
 
-    result = _batch_channel_points_per_second(
-        mock_client, [make_channel("good"), make_channel("bad")], 0, TWENTY_SECONDS_NS, {}
+    result = _batch_channel_bucket_counts(
+        mock_client, [make_channel("good"), make_channel("bad")], 0, TWENTY_SECONDS_NS, {}, 100
     )
 
-    good_rate = result[("ds-1", "good")]
-    assert good_rate is not None and good_rate > 0
+    assert result[("ds-1", "good")] == [(0, 50), (TEN_SECONDS_NS, 100)]
     assert result[("ds-1", "bad")] is None
 
 
@@ -444,6 +449,7 @@ def test_raw_parquet_uses_typed_points_and_skips_rate_sampling(
     start = 1_800_000_000_000_000_000
     name = "count's"
     mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
+    set_storage_types(mock_client, [(name, "INT64")])
     mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
     mock_client._clients.resolve_default_workspace_rid.return_value = "workspace"
     service = mock_client._clients.export_jobs
@@ -464,7 +470,7 @@ def test_raw_parquet_uses_typed_points_and_skips_rate_sampling(
     monkeypatch.setattr("requests.get", MagicMock(return_value=response))
     frames = list(
         PolarsExportHandler(mock_client).export(
-            [make_channel(name, ChannelDataType.INT)],
+            [make_channel(name, ChannelDataType.DOUBLE)],
             start,
             start + 10_000,
             tags={"flight": "pilot's"},
@@ -473,6 +479,7 @@ def test_raw_parquet_uses_typed_points_and_skips_rate_sampling(
         )
     )
     assert len(frames) == 1
+    assert frames[0].schema[name] == pl.Int64
     assert frames[0].equals(pl.DataFrame({"timestamp": [0.0, 1.0], name: [2**53 + 1, 2**53 + 3]}))
     request = service.CreateExportJob.call_args.args[0]
     assert request.settings.file_format == jobs.EXPORT_FILE_FORMAT_PARQUET
@@ -480,6 +487,53 @@ def test_raw_parquet_uses_typed_points_and_skips_rate_sampling(
     assert "'count''s'" in request.sql.query
     assert "tags['flight'] = 'pilot''s'" in request.sql.query
     mock_client._clients.compute.BatchComputeWithUnits.assert_not_called()
+
+
+@pytest.mark.parametrize(("integer", "exact"), [(17, True), (2**53 + 1, False)])
+def test_raw_numeric_type_change_preserves_values_or_raises(
+    mock_client,
+    mock_clients,
+    make_channel,
+    make_enriched_dataset,
+    make_series_count_response,
+    monkeypatch,
+    integer,
+    exact,
+):
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
+    mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
+    set_storage_types(mock_client, [("signal", "DOUBLE"), ("signal", "INT64")])
+
+    @contextmanager
+    def download(_, request):
+        assert "UNION ALL" in request.sql.query
+        payload = io.BytesIO()
+        pl.DataFrame(
+            {"ts": [0, 1], "channel": ["signal"] * 2, "value": [1.5, None], "integer_value": [None, integer]}
+        ).with_columns(pl.col("ts").cast(pl.Datetime("ns"))).write_parquet(payload)
+        payload.seek(0)
+        yield payload
+
+    monkeypatch.setattr("nominal.thirdparty.polars.polars_export_handler.download_export", download)
+    frames = PolarsExportHandler(mock_client).export([make_channel("signal")], 0, 1, join_batches=False)
+    if exact:
+        (frame,) = frames
+        assert frame["signal"].to_list() == [1.5, 17.0]
+    else:
+        with pytest.raises(ValueError, match="signal.*lose precision"):
+            list(frames)
+
+
+def test_unsupported_physical_numeric_type_fails_before_export(
+    mock_client, mock_clients, make_channel, make_enriched_dataset, make_series_count_response
+):
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
+    mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
+    set_storage_types(mock_client, [("counter", "UINT64")])
+    frames = PolarsExportHandler(mock_client).export([make_channel("counter", ChannelDataType.DOUBLE)], 0, 1)
+    with pytest.raises(ValueError, match="counter.*UINT64"):
+        next(frames)
+    mock_client._clients.export_jobs.CreateExportJob.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -505,6 +559,7 @@ def test_automatic_window_sizing(
     fixed_windows,
 ):
     mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
+    set_storage_types(mock_client, [("signal", "DOUBLE")])
     mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
     sample = mock_client._clients.compute.BatchComputeWithUnits
     sample.return_value = MagicMock(results=[make_compute_result(success=make_numeric_response([10]))])
@@ -521,6 +576,34 @@ def test_automatic_window_sizing(
         sample.assert_called_once()
 
 
+@pytest.mark.parametrize("count", [6000, 1_000_001, None])
+def test_long_native_numeric_export_only_coalesces_a_confirmed_small_result(
+    mock_client,
+    mock_clients,
+    make_channel,
+    make_enriched_dataset,
+    make_series_count_response,
+    make_numeric_response,
+    make_compute_result,
+    count,
+):
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
+    set_storage_types(mock_client, [("signal", "DOUBLE")])
+    mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
+    compute = mock_client._clients.compute.BatchComputeWithUnits
+    compute.return_value = MagicMock(
+        results=[] if count is None else [make_compute_result(success=make_numeric_response([count]))]
+    )
+    end = 6_000_000_000_000 - 1
+    plan = PolarsExportHandler(mock_client)._compute_export_jobs(
+        [make_channel("signal")], _TimeRange(0, end), join_batches=False
+    )
+    windows = [job.time_slice for group in plan for job in group]
+    assert len(windows) == (1 if count == 6000 else 50)
+    assert windows[0].start_time == 0 and windows[-1].end_time == end
+    assert compute.call_args.args[0].inputs[0].computation.series_summary.summarization.bucket_count.bucket_count == 1
+
+
 def test_raw_jobs_require_plain_dataset_and_single_series(
     mock_client, mock_clients, make_channel, make_enriched_dataset, make_series_count_response
 ):
@@ -531,6 +614,7 @@ def test_raw_jobs_require_plain_dataset_and_single_series(
         make_channel("derived", data_source="view"),
     ]
     mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1, 2, 1])
+    set_storage_types(mock_client, [("raw", "DOUBLE"), ("multi", "DOUBLE")])
     mock_client._clients.catalog.get_enriched_datasets.return_value = [
         make_enriched_dataset("physical"),
         make_enriched_dataset("view", derived_definition=MagicMock()),
@@ -538,7 +622,7 @@ def test_raw_jobs_require_plain_dataset_and_single_series(
     plan = PolarsExportHandler(mock_client)._compute_export_jobs(
         channels, _TimeRange(0, TEN_SECONDS_NS), batch_duration=datetime.timedelta(seconds=10)
     )
-    assert {ch.name: job.raw_table for group in plan for job in group for ch in job.channels} == {
+    assert {ch.name: job.raw_kind for group in plan for job in group for ch in job.channels} == {
         "raw": "points_double",
         "multi": None,
         "derived": None,
@@ -561,6 +645,7 @@ def test_unjoined_raw_frames_follow_exact_sample_times(
         .with_columns(pl.col("ts").cast(pl.Datetime("ns")))
     )
     mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1] * len(names))
+    set_storage_types(mock_client, [(n, "INT64") for n in names])
     mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
     mock_client._clients.resolve_default_workspace_rid.return_value = "workspace"
     requests = []
@@ -632,6 +717,7 @@ def test_mixed_raw_job_resolves_ambiguous_channels_for_its_own_window(
     channels = [make_channel("slow"), make_channel("fast")]
     ds = mock_clients.datasource.batch_get_series_count
     ds.return_value = make_series_count_response([1, 2])
+    set_storage_types(mock_client, [("slow", "DOUBLE"), ("fast", "DOUBLE")])
     mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
     plan = PolarsExportHandler(mock_client)._compute_export_jobs(
         channels,
@@ -643,17 +729,20 @@ def test_mixed_raw_job_resolves_ambiguous_channels_for_its_own_window(
     assert len(first) == len(second) == 1
 
     ds.return_value = make_series_count_response([1])
-    assert [(job.raw_table, list(job.channels)) for job in first[0].resolve_sources()] == [("points_double", channels)]
+    assert [(job.raw_kind, list(job.channels)) for job in first[0].resolve_sources()] == [("points_double", channels)]
     request = ds.call_args.args[1].requests
     assert len(request) == 1 and request[0].channel == "fast"
     assert request[0].range.end.seconds == 9 and request[0].range.end.nanos == 999_999_999
     assert request[0].tag_filters is not None
 
+    ds.return_value = make_series_count_response([0])
+    assert [(job.raw_kind, list(job.channels)) for job in second[0].resolve_sources()] == [("points_double", channels)]
+
     if overlap_count is None:
         ds.side_effect = RuntimeError("unavailable")
     else:
         ds.return_value = make_series_count_response([overlap_count])
-    assert [(job.raw_table, list(job.channels)) for job in second[0].resolve_sources()] == [
+    assert [(job.raw_kind, list(job.channels)) for job in second[0].resolve_sources()] == [
         ("points_double", channels[:1]),
         (None, channels[1:]),
     ]
@@ -666,11 +755,12 @@ def test_multifile_channel_can_use_sql_on_its_own(
     channel = make_channel("fast")
     counts = mock_clients.datasource.batch_get_series_count
     counts.side_effect = [make_series_count_response([count]) for count in (3, 1, 2)]
+    set_storage_types(mock_client, [("fast", "DOUBLE")])
     mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
     windows = PolarsExportHandler(mock_client)._compute_export_jobs(
         [channel], _TimeRange(0, TWENTY_SECONDS_NS - 1), batch_duration=datetime.timedelta(seconds=10)
     )
-    assert [source.raw_table for window in windows for job in window for source in job.resolve_sources()] == [
+    assert [source.raw_kind for window in windows for job in window for source in job.resolve_sources()] == [
         "points_double",
         None,
     ]
@@ -683,7 +773,7 @@ def test_missing_series_count_uses_compute(mock_client, mock_clients, make_chann
         _TimeRange(0, 10),
         batch_duration=datetime.timedelta(seconds=1),
     )
-    assert [(job.raw_table, [ch.name for ch in job.channels]) for group in plan for job in group] == [
+    assert [(job.raw_kind, [ch.name for ch in job.channels]) for group in plan for job in group] == [
         (None, ["external"])
     ]
 
