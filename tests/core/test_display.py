@@ -14,6 +14,7 @@ from nominal.core import (
     Bounds,
     Channel,
     ChannelDataType,
+    Checklist,
     Dataset,
     NominalClient,
     Run,
@@ -338,6 +339,22 @@ def test_user_values_are_escaped():
     assert "&lt;b&gt;key&lt;/b&gt;" in card and "&lt;i&gt;value&lt;/i&gt;" in card
     assert 'href="javascript' not in card
     assert 'href="https://example.com/?a=1&amp;b=2"' in card
+
+
+def test_checklist_card_shows_the_commit_message_line_by_line():
+    """A checklist's card shows its commit message line by line as escaped text, and no row without one."""
+    clients = _offline_clients()
+    fields: dict[str, object] = dict(
+        rid="ri.scout.checklist.1", name="Monitor", description="", properties={}, labels=[], _clients=clients
+    )
+    message = "Raise <b>limit</b>\n\nsource: 4f2a9c1"
+    loaded = Checklist(**fields, commit_id="commit", commit_message=message)  # type: ignore[arg-type]
+    manual = Checklist(**fields)  # type: ignore[arg-type]
+    with set_display_options(show_link=False, fetch_details=False):
+        card, manual_card = loaded._repr_html_(), manual._repr_html_()
+    assert card is not None and manual_card is not None
+    assert "Raise &lt;b&gt;limit&lt;/b&gt;<br><br>source: 4f2a9c1" in card
+    assert "Commit message" not in manual_card
 
 
 def _time_text(html: str) -> str:

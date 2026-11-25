@@ -287,6 +287,11 @@ def escape(value: object) -> str:
     return html.escape(str(value))
 
 
+def multiline(value: object) -> str:
+    """Escaped text that keeps its line breaks, which HTML would otherwise run together."""
+    return "<br>".join(escape(value).splitlines())
+
+
 def code(value: object) -> str:
     return f"<code>{escape(value)}</code>"
 
