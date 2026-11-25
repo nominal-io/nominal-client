@@ -128,7 +128,7 @@ def test_series_requirement_replacement_distinguishes_never_set_and_cleared() ->
     clients = MagicMock()
     client = NominalClient(_clients=clients)
     clients.resolve_default_workspace_rid.return_value = "workspace"
-    required: dict[str, SeriesType] = {"engine/RPM": "NUMERIC", "events": "LOG"}
+    required = {"engine/RPM": SeriesType.NUMERIC, "events": SeriesType.LOG}
     defined = asset_pb2.DataRequirements(
         series=asset_pb2.SeriesRequirements(
             series=[
@@ -149,7 +149,7 @@ def test_series_requirement_replacement_distinguishes_never_set_and_cleared() ->
     assert not clients.assets.UpdateType.call_args.args[0].HasField("data_requirements")
 
     clients.assets.UpdateType.reset_mock()
-    with pytest.raises(ValueError, match="Unsupported required series type"):
+    with pytest.raises(ValueError, match="DOUBLE"):
         kind.update(required_series={"engine/RPM": "DOUBLE"})  # type: ignore[dict-item]
     clients.assets.UpdateType.assert_not_called()
 

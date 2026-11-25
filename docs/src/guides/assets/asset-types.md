@@ -145,11 +145,13 @@ Any member, including an archived asset, or a checklist referencing the type pre
 ## Require telemetry on member assets
 
 Use `required_series` when creating or updating a type. Each key is an exact channel
-name. Use one of `"NUMERIC"`, `"STRING"`, `"LOG"`, `"NUMERIC_ARRAY"`, `"STRING_ARRAY"`, or `"STRUCT"` as the value. For example, integer and
-floating-point channels both satisfy a numeric requirement.
+name, and each value is a `SeriesType` member. Integer and floating-point
+channels both satisfy `SeriesType.NUMERIC`.
 
 ```python
-pump_type.update(required_series={"outlet_pressure": "NUMERIC"})
+from nominal.core import SeriesType
+
+pump_type.update(required_series={"outlet_pressure": SeriesType.NUMERIC})
 ```
 
 For a new pump, replace the placeholder below with the RID of a dataset that
