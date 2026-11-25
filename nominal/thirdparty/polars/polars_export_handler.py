@@ -33,7 +33,12 @@ from nominal.thirdparty.polars._frames import (
     read_compute_frames,
     read_raw_frames,
 )
-from nominal.thirdparty.polars._point_counts import SAMPLE_BATCH_SIZE, estimate_export_rates, sample_counts
+from nominal.thirdparty.polars._point_counts import (
+    SAMPLE_BATCH_SIZE,
+    PointEstimate,
+    estimate_export_sizes,
+    sample_sizes,
+)
 from nominal.ts import (
     IntegralNanosecondsDuration,
     IntegralNanosecondsUTC,
@@ -248,7 +253,7 @@ class PolarsExportHandler:
         )
         multi_series = {(ch.data_source, ch.name) for ch, count in matches if count is not None and count > 1}
         channels = [ch for ch, _ in matches]
-        duration_ns, rates = self._window_size(
+        duration_ns, sizes = self._window_size(
             channels,
             time_range,
             tags,
@@ -257,8 +262,8 @@ class PolarsExportHandler:
             native=not join_batches,
             multi_series=bool(multi_series),
         )
-        if rates is not None:
-            channels = [ch for ch in channels if (ch.data_source, ch.name) in rates]
+        if sizes is not None:
+            channels = [ch for ch in channels if (ch.data_source, ch.name) in sizes]
         if not channels:
             return
         multiple_windows = time_range.duration > duration_ns
@@ -272,9 +277,10 @@ class PolarsExportHandler:
             separate = channel.name if kind == "mixed_numeric" else None
             channels_by_datasource[channel.data_source, kind, separate].append(channel)
 
+        single_series = {key for key, kind in sources.items() if kind != "mixed_numeric"} - multi_series
         groups = []
         for (_, kind, _), channels_in_source in channels_by_datasource.items():
-            for group, step_ns in self._channel_groups(channels_in_source, rates or {}, duration_ns):
+            for group, step_ns in self._channel_groups(channels_in_source, sizes or {}, duration_ns, single_series):
                 to_check = frozenset(ch.name for ch in group if (ch.data_source, ch.name) in multi_series)
                 template = _ExportJob(
                     channels=group,
@@ -314,8 +320,8 @@ class PolarsExportHandler:
         *,
         native: bool,
         multi_series: bool,
-    ) -> tuple[int, dict[tuple[str, str], float] | None]:
-        """Return a window duration and, only when sampled for a point budget, the channel rates."""
+    ) -> tuple[int, dict[tuple[str, str], PointEstimate] | None]:
+        """Return a window duration and, only when sampled for a point budget, the channel sizes."""
         span = bounds.duration
         fixed = duration // datetime.timedelta(microseconds=1) * 1000 if duration is not None else None
         if fixed is not None and self._points_per_request is None:
@@ -337,15 +343,13 @@ class PolarsExportHandler:
                 and not multi_series
                 and all(source in {"points_int", "points_double"} for source in sources.values())
             ):
-                counts = sample_counts(self._client, channels, bounds, tags, bucket_count=1)
-                if (
-                    len(counts) == len(channels)
-                    and sum(n for buckets in counts.values() for _, n in buckets) <= _SMALL_NUMERIC_EXPORT_POINTS
-                ):
+                samples = sample_sizes(self._client, channels, bounds, tags, bucket_count=1)
+                totals = [size.total for size in samples.values() if size.total is not None]
+                if len(totals) == len(channels) and sum(totals) <= _SMALL_NUMERIC_EXPORT_POINTS:
                     return span, None
             return _NATIVE_WINDOW_NS, None
 
-        rates = estimate_export_rates(
+        sizes = estimate_export_sizes(
             self._client,
             channels,
             bounds,
@@ -354,38 +358,43 @@ class PolarsExportHandler:
             require_all=self._points_per_request is not None,
         )
         if fixed is not None:
-            return fixed, rates
-        rate = sum(rates.values())
+            return fixed, sizes
+        rate = sum(size.peak_rate for size in sizes.values())
         target = self._points_per_dataframe or DEFAULT_POINTS_PER_DATAFRAME
         step = max(1, int(target * 1e9 / rate)) if rate else span
-        return min(span, step), rates
+        return min(span, step), sizes
 
     def _channel_groups(
         self,
         channels: Sequence[Channel],
-        rates: Mapping[tuple[str, str], float],
+        sizes: Mapping[tuple[str, str], PointEstimate],
         duration_ns: int,
+        single_series: set[tuple[str, str]],
     ) -> Iterator[tuple[Sequence[Channel], int | None]]:
         """Pack channels by estimated rate, splitting oversized channels into shorter jobs."""
-        if self._points_per_request is None or not rates:
+        if self._points_per_request is None or not sizes:
             for batch in batched(channels, self._channels_per_request):
                 yield batch, None
             return
 
-        allowed_rate = self._points_per_request * 1e9 / duration_ns
         group: list[Channel] = []
-        group_rate = 0.0
-        for channel in sorted(channels, key=lambda ch: rates[ch.data_source, ch.name], reverse=True):
-            rate = rates[channel.data_source, channel.name]
-            if rate > allowed_rate:
-                yield [channel], max(1, int(self._points_per_request * 1e9 / rate))
+        group_points = 0.0
+        for channel in sorted(channels, key=lambda ch: sizes[ch.data_source, ch.name].peak_rate, reverse=True):
+            key = (channel.data_source, channel.name)
+            size = sizes[key]
+            points = size.peak_rate * duration_ns / 1e9
+            # A window cannot contain more samples than its single series has in the full export.
+            if key in single_series and size.total is not None:
+                points = min(points, size.total)
+            if points > self._points_per_request:
+                yield [channel], max(1, int(self._points_per_request * 1e9 / size.peak_rate))
                 continue
-            if group and (group_rate + rate > allowed_rate or len(group) == self._channels_per_request):
+            if group and (group_points + points > self._points_per_request or len(group) == self._channels_per_request):
                 yield group, None
                 group = []
-                group_rate = 0.0
+                group_points = 0.0
             group.append(channel)
-            group_rate += rate
+            group_points += points
         if group:
             yield group, None
 

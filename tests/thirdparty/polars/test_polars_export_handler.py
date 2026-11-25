@@ -14,14 +14,10 @@ import pytest
 from nominal.core.bounds import Bounds
 from nominal.core.channel import ChannelDataType
 from nominal.protos.compute.v1 import (
-    categorical_results_pb2,
     execution_results_pb2,
-    numeric_results_pb2,
-    result_common_pb2,
 )
 from nominal.protos.exportjobs.v1 import export_jobs_pb2 as jobs
-from nominal.protos.types.time import time_pb2
-from nominal.thirdparty.polars._point_counts import _extract_bucket_counts, _peak_points_per_second
+from nominal.thirdparty.polars._point_counts import PointEstimate, _estimate_response
 from nominal.thirdparty.polars.polars_export_handler import (
     PolarsExportHandler,
     _ExportJob,
@@ -32,82 +28,30 @@ TEN_SECONDS_NS = 10_000_000_000
 TWENTY_SECONDS_NS = 20_000_000_000
 
 
-def test_extract_numeric_bucketed(make_numeric_response):
-    """Bucketed numeric response yields (timestamp_ns, count) pairs preserving bucket order."""
-    result = _extract_bucket_counts(make_numeric_response([50, 75]))
-
-    assert result == [(0, 50), (TEN_SECONDS_NS, 75)]
-
-
-def test_extract_numeric_undecimated():
-    """Undecimated numeric series yields count=1 per timestamp."""
-    response = execution_results_pb2.ComputationResult(
-        numeric_samples=numeric_results_pb2.NumericSamples(
-            samples=[result_common_pb2.NumericSample(timestamp=time_pb2.Timestamp(seconds=s)) for s in (100, 200, 300)]
-        )
+def test_numeric_and_categorical_bucket_rates(make_numeric_response, make_enum_response):
+    assert _estimate_response(make_numeric_response([50, 75]), TWENTY_SECONDS_NS, 2) == PointEstimate(7.5, 125)
+    assert _estimate_response(make_enum_response([{0: 30, 1: 20}, {0: 10}]), TWENTY_SECONDS_NS, 2) == PointEstimate(
+        5, 60
     )
-
-    result = _extract_bucket_counts(response)
-
-    assert len(result) == 3
-    assert all(count == 1 for _, count in result)
+    assert _estimate_response(execution_results_pb2.ComputationResult(), TEN_SECONDS_NS, 2) is None
 
 
-def test_extract_numeric_single_point():
-    """A single numeric point yields one entry with count=1."""
-    response = execution_results_pb2.ComputationResult(
-        numeric_sample=execution_results_pb2.OptionalNumericSampleResult(
-            sample=result_common_pb2.NumericSample(timestamp=time_pb2.Timestamp(seconds=100))
-        )
-    )
-
-    assert _extract_bucket_counts(response) == [(100_000_000_000, 1)]
-
-
-def test_extract_enum_bucketed(make_enum_response):
-    """Bucketed enum response sums histogram frequencies per bucket."""
-    result = _extract_bucket_counts(make_enum_response([{0: 30, 1: 20}, {0: 10}]))
-
-    assert result == [(0, 50), (TEN_SECONDS_NS, 10)]
+@pytest.mark.parametrize("kind", ["numeric", "categorical"])
+@pytest.mark.parametrize(("times", "peak"), [([], 0), ([1, 6, 11], 0.2), ([1, 1], 0.1)])
+def test_undecimated_rate_uses_sample_spacing(kind, times, peak):
+    result = execution_results_pb2.ComputationResult()
+    series = getattr(result, f"{kind}_samples")
+    series.SetInParent()
+    for second in times:
+        series.samples.add().timestamp.seconds = second
+    assert _estimate_response(result, TWENTY_SECONDS_NS, 100) == PointEstimate(peak, len(times))
 
 
-def test_extract_enum_undecimated():
-    """Undecimated enum series yields count=1 per timestamp."""
-    response = execution_results_pb2.ComputationResult(
-        categorical_samples=categorical_results_pb2.CategoricalSamples(
-            samples=[
-                categorical_results_pb2.CategoricalCodeSample(timestamp=time_pb2.Timestamp(seconds=s))
-                for s in (100, 200)
-            ]
-        )
-    )
-
-    result = _extract_bucket_counts(response)
-
-    assert len(result) == 2
-    assert all(count == 1 for _, count in result)
-
-
-def test_extract_unrecognized_response_returns_unknown():
-    """An unrecognized result gives the planner an unknown rate."""
-    response = execution_results_pb2.ComputationResult()
-
-    assert _extract_bucket_counts(response) is None
-
-
-@pytest.mark.parametrize(
-    ("buckets", "end", "expected"),
-    [
-        ([], 10, 0),
-        ([(5, 100)], 10, 10),
-        ([(5, 100)], 0, 0),
-        ([(1, 10), (2, 100), (3, 20)], 3, 100),
-        ([(1, 10), (1, 50), (2, 20)], 2, 40),
-        ([(1, 23), (2, 0)], 2, 23),
-    ],
-)
-def test_peak_points_per_second(buckets, end, expected):
-    assert _peak_points_per_second([(s * 10**9, n) for s, n in buckets], 0, end * 10**9) == expected
+@pytest.mark.parametrize("kind", ["numeric", "categorical"])
+def test_single_sample_estimate(kind):
+    result = execution_results_pb2.ComputationResult()
+    getattr(result, f"{kind}_sample").sample.timestamp.nanos = 123
+    assert _estimate_response(result, TEN_SECONDS_NS, 100) == PointEstimate(0.1, 1)
 
 
 def set_storage_types(mock_client, rows):
@@ -130,9 +74,61 @@ def test_channel_groups_respect_both_budgets(mock_client, make_channel, rates, b
     channels = [make_channel(str(i)) for i in range(len(rates))]
     handler = PolarsExportHandler(mock_client, points_per_request=budget, channels_per_request=cap)
     groups = handler._channel_groups(
-        channels, {(ch.data_source, ch.name): rate for ch, rate in zip(channels, rates)}, 10**9
+        channels,
+        {(ch.data_source, ch.name): PointEstimate(rate, None) for ch, rate in zip(channels, rates)},
+        10**9,
+        set(),
     )
     assert [([int(ch.name) for ch in group], step) for group, step in groups] == expected
+
+
+def test_offset_first_bucket_does_not_split_a_steady_channel_into_tiny_requests(
+    mock_client,
+    mock_clients,
+    make_channel,
+    make_series_count_response,
+    make_compute_result,
+    make_numeric_response,
+):
+    channel = make_channel("steady")
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([1])
+    summary = make_numeric_response([6] * 100)
+    for i, bucket in enumerate(summary.numeric_buckets.buckets):
+        ns = 7751995 + i * 600_000_000
+        bucket.end.seconds, bucket.end.nanos = divmod(ns, 10**9)
+    mock_client._clients.compute.BatchComputeWithUnits.return_value.results = [make_compute_result(success=summary)]
+    plan = PolarsExportHandler(mock_client, points_per_request=60)._compute_export_jobs(
+        [channel], Bounds(0, 60 * 10**9), batch_duration=datetime.timedelta(minutes=1)
+    )
+    assert len(list(next(plan))) == 10
+
+
+@pytest.mark.parametrize(("series_count", "expected_jobs"), [(1, 1), (2, 2)])
+def test_request_budget_uses_total_only_for_known_single_series(
+    mock_client,
+    mock_clients,
+    make_channel,
+    make_numeric_response,
+    make_compute_result,
+    make_series_count_response,
+    make_enriched_dataset,
+    series_count,
+    expected_jobs,
+):
+    channels = [make_channel("a"), make_channel("b")]
+    mock_clients.datasource.batch_get_series_count.return_value = make_series_count_response([series_count] * 2)
+    mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
+    set_storage_types(mock_client, [(ch.name, "DOUBLE") for ch in channels])
+    # Both channels have six samples in a burst. Projecting the peak over a minute
+    # would split them even though the entire selection fits in one request.
+    summary = make_numeric_response([3, 3], bucket_interval_seconds=1)
+    mock_client._clients.compute.BatchComputeWithUnits.return_value.results = [
+        make_compute_result(success=summary) for _ in channels
+    ]
+    plan = PolarsExportHandler(mock_client, points_per_request=300)._compute_export_jobs(
+        channels, Bounds(0, 60 * 10**9), batch_duration=datetime.timedelta(minutes=1)
+    )
+    assert len(list(next(plan))) == expected_jobs
 
 
 def test_auto_sizing_keeps_channels_with_failed_rates(
@@ -160,7 +156,7 @@ def test_auto_sizing_keeps_channels_with_failed_rates(
     assert exported_names == {"known", "none_rate"}
 
 
-@pytest.mark.parametrize("failure", ["unavailable", "missing", "malformed"])
+@pytest.mark.parametrize("failure", ["unavailable", "missing", "malformed", "no-count"])
 def test_explicit_point_budget_fails_before_export_when_counts_are_unknown(
     mock_client, mock_clients, make_channel, make_compute_result, make_series_count_response, failure
 ):
@@ -168,6 +164,10 @@ def test_explicit_point_budget_fails_before_export_when_counts_are_unknown(
     sample = mock_client._clients.compute.BatchComputeWithUnits
     if failure == "unavailable":
         sample.side_effect = RuntimeError("service unavailable")
+    elif failure == "no-count":
+        summary = execution_results_pb2.ComputationResult()
+        summary.numeric_buckets.buckets.add().statistics.mean = 13
+        sample.return_value.results = [make_compute_result(success=summary)]
     else:
         sample.return_value.results = [] if failure == "missing" else [make_compute_result()]
     handler = PolarsExportHandler(mock_client, points_per_request=10)
@@ -456,7 +456,7 @@ def test_automatic_window_sizing(
         sample.assert_called_once()
 
 
-@pytest.mark.parametrize("count", [6000, 1_000_001, None])
+@pytest.mark.parametrize("count", [6000, 1_000_001, None, "paged"])
 def test_long_native_numeric_export_only_coalesces_a_confirmed_small_result(
     mock_client,
     mock_clients,
@@ -471,9 +471,15 @@ def test_long_native_numeric_export_only_coalesces_a_confirmed_small_result(
     set_storage_types(mock_client, [("signal", "DOUBLE")])
     mock_client._clients.catalog.get_enriched_datasets.return_value = [make_enriched_dataset("ds-1")]
     compute = mock_client._clients.compute.BatchComputeWithUnits
-    compute.return_value = MagicMock(
-        results=[] if count is None else [make_compute_result(success=make_numeric_response([count]))]
-    )
+    if count == "paged":
+        summary = execution_results_pb2.ComputationResult()
+        summary.numeric_samples.samples.add().timestamp.seconds = 1
+        summary.numeric_samples.next_page_token = "next"
+        compute.return_value.results = [make_compute_result(success=summary)]
+    else:
+        compute.return_value.results = (
+            [] if count is None else [make_compute_result(success=make_numeric_response([count]))]
+        )
     end = 6_000_000_000_000 - 1
     plan = PolarsExportHandler(mock_client)._compute_export_jobs(
         [make_channel("signal")], Bounds(0, end), join_batches=False
@@ -656,12 +662,6 @@ def test_missing_series_count_uses_compute(mock_client, mock_clients, make_chann
     assert [(job.raw_kind, [ch.name for ch in job.channels]) for group in plan for job in group] == [
         (None, ["external"])
     ]
-
-
-def test_single_categorical_sample_counts():
-    response = execution_results_pb2.ComputationResult()
-    response.categorical_sample.sample.timestamp.nanos = 123
-    assert _extract_bucket_counts(response) == [(123, 1)]
 
 
 def test_submicrosecond_window_keeps_channel(

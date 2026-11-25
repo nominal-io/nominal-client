@@ -60,6 +60,8 @@ For raw channels that each match one series in a stored dataset, the handler dow
 
 Set `batch_duration` to choose a time window. With no sizing options, unjoined full-resolution exports use two-minute windows when all channels have known series counts in stored datasets without a default aggregation. For long numeric selections that fit in one metadata request, the handler can combine the entire range into one window if it contains at most one million samples. A missing count keeps the two-minute windows. Joined and decimated exports estimate the window from channel rates, targeting 25 million samples by default. Set `points_per_dataframe` to request a different target or enable rate-based sizing for native frames. An explicit duration skips rate estimation unless you also set `points_per_request`.
 
+When you set `points_per_request`, the handler estimates how many samples each channel contributes to a job. For a raw channel with one matching series and one storage type, a complete sample count over the selection caps that estimate. A short burst within a sampled interval can still exceed the target.
+
 Each job can include up to 256 channels by default. The handler yields time windows in order. Joined exports can process two adjacent windows concurrently. With `join_batches=False`, the handler can use spare workers for later windows when each window contains only a few jobs. Use `num_workers` to tune concurrency for your deployment and available memory.
 
 
