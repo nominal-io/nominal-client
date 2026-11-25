@@ -9,31 +9,25 @@ AI_AGENT_HEADER = "X-Nominal-AI-Agent"
 NO_AI_AGENT = "none"
 _HEADER_VALUE_DISALLOWED = re.compile(r"[^A-Za-z0-9._+-]")
 
-# Variables an AI coding agent sets in the shells it runs commands in, mapped to the agent's slug. Drawn from
-# @vercel/detect-agent, laravel/agent-detector, and each agent's own source.
+# Variables an AI coding agent sets in the commands it runs, mapped to the agent's slug. Each one is set by the agent
+# itself (checked against its docs or source), never user configuration or a marker of an IDE terminal a person also
+# types in. Agents with no such variable (Copilot CLI, Kiro, Antigravity, Amp) are detected only through AI_AGENT.
 _AGENT_ENV_VARS: Mapping[str, str] = {
     "KILO_PID": "kilo-code",  # Kilo also sets OPENCODE, so it comes first.
-    "CLAUDECODE": "claude-code",
-    "CLAUDE_CODE": "claude-code",
+    "CLAUDE_CODE_CHILD_SESSION": "claude-code",  # Unlike CLAUDECODE, not set in IDE extension terminals.
     "CODEX_THREAD_ID": "codex",
     "CODEX_SANDBOX": "codex",
     "CODEX_CI": "codex",
     "CURSOR_AGENT": "cursor",
     "GEMINI_CLI": "gemini",
-    "COPILOT_ALLOW_ALL": "github-copilot",
     "OPENCODE": "opencode",
-    "OPENCODE_CLIENT": "opencode",
     "CLINE_ACTIVE": "cline",
     "ROO_ACTIVE": "roo-code",
     "PI_CODING_AGENT": "pi",
     "GOOSE_TERMINAL": "goose",
     "QWEN_CODE": "qwen-code",
     "CRUSH": "crush",
-    "AMP_CURRENT_THREAD_ID": "amp",
-    "KIRO_SESSION_ID": "kiro",
     "JUNIE_SHIM_PATH": "junie",
-    "ANTIGRAVITY_AGENT": "antigravity",
-    "AUGMENT_AGENT": "augment",
 }
 _FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
