@@ -3,9 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Iterable, Mapping, Protocol, Self, Sequence, TypeAlias
-
-from nominal_api import scout_asset_api
+from typing import Iterable, Literal, Mapping, Protocol, Self, Sequence, TypeAlias, cast, get_args
 
 from nominal.core._clientsbunch import HasScoutParams
 from nominal.core._utils.api_tools import HasRid, RefreshableGrpcMixin, rid_from_instance_or_string
@@ -16,7 +14,7 @@ from nominal.exceptions import NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2, asset_pb2_grpc
 from nominal.ts import IntegralNanosecondsUTC
 
-SeriesType: TypeAlias = scout_asset_api.SeriesType
+SeriesType: TypeAlias = Literal["NUMERIC", "STRING", "LOG", "NUMERIC_ARRAY", "STRING_ARRAY", "STRUCT"]
 """The kind of telemetry required by an asset type. NUMERIC accepts double, int64, and uint64 channels."""
 
 
@@ -68,6 +66,12 @@ class AssetTypeProperty:
         return cls(value_type=value_type, required=value.requirement == asset_pb2.REQUIRED)
 
 
+def _series_type(name: str) -> SeriesType:
+    if name not in get_args(SeriesType):
+        raise ValueError(f"Unsupported required series type: {name!r}")
+    return cast(SeriesType, name)
+
+
 def _data_requirements_to_proto(
     required_series: Mapping[str, SeriesType] | None,
 ) -> asset_pb2.DataRequirements | None:
@@ -76,7 +80,9 @@ def _data_requirements_to_proto(
     return asset_pb2.DataRequirements(
         series=asset_pb2.SeriesRequirements(
             series=[
-                asset_pb2.SeriesRequirement(name=name, type=asset_pb2.SeriesRequirement.SeriesType.Value(kind.value))
+                asset_pb2.SeriesRequirement(
+                    name=name, type=asset_pb2.SeriesRequirement.SeriesType.Value(_series_type(kind))
+                )
                 for name, kind in required_series.items()
             ]
         )
@@ -239,7 +245,7 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
                 raise ValueError(f"Unknown data requirements for asset type {raw.rid!r}")
             required_series = MappingProxyType(
                 {
-                    item.name: SeriesType(asset_pb2.SeriesRequirement.SeriesType.Name(item.type))
+                    item.name: _series_type(asset_pb2.SeriesRequirement.SeriesType.Name(item.type))
                     for item in raw.data_requirements.series.series
                 }
             )
