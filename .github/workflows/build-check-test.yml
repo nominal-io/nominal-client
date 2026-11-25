@@ -56,7 +56,7 @@ jobs:
   coverage:
     runs-on: depot-ubuntu-24.04
     outputs:
-      summary: ${{ steps.summary.outputs.markdown }}
+      comment: ${{ steps.summary.outputs.comment }}
     steps:
       # fetch-depth: 2 required — the coverage steps compare HEAD with its first parent
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -105,17 +105,21 @@ jobs:
           if [ -f "$RUNNER_TEMP/coverage-base.json" ]; then
             args+=(--base "$RUNNER_TEMP/coverage-base.json")
           fi
-          uv run python .github/scripts/coverage_summary.py "${args[@]}" > "$RUNNER_TEMP/summary.md"
-          cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
-          # The comment job posts the same text. A random delimiter means no line of the text can end the output.
-          delimiter="$(openssl rand -hex 16)"
-          {
-            echo "markdown<<$delimiter"
-            cat "$RUNNER_TEMP/summary.md"
-            echo "$delimiter"
-          } >> "$GITHUB_OUTPUT"
+          uv run python .github/scripts/coverage_summary.py "${args[@]}" --comment "$RUNNER_TEMP/comment.md" \
+            >> "$GITHUB_STEP_SUMMARY"
+          # The script writes the comment file only when the summary lists a changed file. The comment job
+          # posts it. A random delimiter means no line of the text can end the output.
+          if [ -f "$RUNNER_TEMP/comment.md" ]; then
+            delimiter="$(openssl rand -hex 16)"
+            {
+              echo "comment<<$delimiter"
+              cat "$RUNNER_TEMP/comment.md"
+              echo "$delimiter"
+            } >> "$GITHUB_OUTPUT"
+          fi
 
-  # Posts the coverage summary as one comment on the pull request, and updates that comment on later runs.
+  # Posts the coverage summary as one comment on the pull request when it lists a changed file, and updates
+  # that comment on later runs. When a later run lists no file, it removes the comment.
   # This job can write to pull requests, so it runs no code of the pull request: it only posts the text.
   coverage-comment:
     needs: coverage
@@ -129,21 +133,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           # Store in an environment to guard against script injection
-          SUMMARY: ${{ needs.coverage.outputs.summary }}
+          COMMENT: ${{ needs.coverage.outputs.comment }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           marker="<!-- coverage-summary -->"
           comments="repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments"
           mine=".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id"
           id=$(gh api "$comments" --paginate --jq "$mine" | head -n 1)
-          if [ -n "$id" ]; then
-            request=(--method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id")
+          earlier="repos/$GITHUB_REPOSITORY/issues/comments/$id"
+          body="$marker"$'\n'"$COMMENT"
+          if [ -z "$COMMENT" ] && [ -z "$id" ]; then
+            exit 0
+          elif [ -z "$COMMENT" ]; then
+            # The summary lists no changed file any more, so the comment of an earlier run is out of date.
+            request=(--method DELETE "$earlier")
+          elif [ -n "$id" ]; then
+            request=(--method PATCH "$earlier" -f body="$body")
           else
-            request=(--method POST "$comments")
+            request=(--method POST "$comments" -f body="$body")
           fi
-          # The summary page has the same text, so a comment that can't be posted must not fail the job.
-          gh api "${request[@]}" -f body="$marker"$'\n'"$SUMMARY" > /dev/null \
-            || echo "::warning::The coverage comment could not be posted."
+          # The summary page always has the text, so a failure here must not fail the job.
+          gh api "${request[@]}" > /dev/null || echo "::warning::The coverage comment could not be updated."
 
   build-packages:
     runs-on: depot-ubuntu-24.04-small

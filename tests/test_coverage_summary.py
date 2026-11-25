@@ -135,6 +135,24 @@ def test_pull_request_without_measured_changes_says_so(tmp_path: Path, changed_l
     )
 
 
+@pytest.mark.parametrize(
+    ("changed_line", "lists_a_file"),
+    [("M\tnominal/a.py", True), ("M\tnominal/core/__init__.py", False)],
+    ids=["measured file", "unmeasured file"],
+)
+def test_comment_file_is_written_only_when_the_summary_lists_a_file(
+    tmp_path: Path, changed_line: str, lists_a_file: bool
+) -> None:
+    """The pull request comment repeats the summary, and there is none when it has no file to show."""
+    head = write_report(tmp_path / "head.json", 81.0, {"nominal/a.py": (10, 5, 50.0)})
+    changed = write_changed(tmp_path / "changed.txt", changed_line)
+    comment = tmp_path / "comment.md"
+
+    summary = summarize(head, "--changed", changed, "--comment", comment)
+
+    assert (comment.read_text() if comment.exists() else None) == (summary if lists_a_file else None)
+
+
 def test_pull_request_without_base_report_shows_no_comparison(tmp_path: Path) -> None:
     """When the base branch could not be measured, the summary gives the numbers and says why they stand alone."""
     head = write_report(tmp_path / "head.json", 81.0, {"nominal/a.py": (10, 5, 50.0)})

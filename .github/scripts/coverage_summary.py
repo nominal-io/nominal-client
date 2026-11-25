@@ -54,8 +54,11 @@ def coverage(after: Summary, before: Summary | None) -> str:
     return compare(f"{after['percent_covered']:.1f}%", after, before, "percent_covered", higher_is_better=True)
 
 
-def summarize(head: Path, base: Path | None, changed: Path | None) -> str:
-    """Render the summary; `changed` holds the `git diff --name-status` lines of a pull request."""
+def summarize(head: Path, base: Path | None, changed: Path | None) -> tuple[str, bool]:
+    """Render the summary, and say whether it lists a changed file.
+
+    `changed` holds the `git diff --name-status` lines of a pull request.
+    """
     total, files = read_report(head)
     base_total: Summary | None = None
     base_files: dict[str, Summary] = {}
@@ -64,7 +67,7 @@ def summarize(head: Path, base: Path | None, changed: Path | None) -> str:
 
     lines = [f"## Test coverage: {coverage(total, base_total)}"]
     if changed is None:
-        return "\n".join(lines)
+        return "\n".join(lines), False
 
     lines += ["", "### Files changed in this pull request", ""]
     # A line is a status and a path, separated by tabs. A renamed file has its old path before the new one.
@@ -95,7 +98,7 @@ def summarize(head: Path, base: Path | None, changed: Path | None) -> str:
         lines += ["", f"{legend}, and (-) is no change."]
     else:
         lines += ["", "The base branch has no coverage report, so there is no comparison."]
-    return "\n".join(lines)
+    return "\n".join(lines), bool(measured)
 
 
 def main() -> None:
@@ -105,8 +108,15 @@ def main() -> None:
     parser.add_argument(
         "--changed", type=Path, help="file with the `git diff --name-status` lines of the changed paths"
     )
+    parser.add_argument(
+        "--comment", type=Path, help="also write the summary to this file, when it lists a changed file"
+    )
     args = parser.parse_args()
-    print(summarize(args.head, args.base, args.changed))
+    summary, lists_a_file = summarize(args.head, args.base, args.changed)
+    print(summary)
+    # A pull request comment is worth posting only when it has a file to show.
+    if args.comment is not None and lists_a_file:
+        args.comment.write_text(f"{summary}\n")
 
 
 if __name__ == "__main__":
