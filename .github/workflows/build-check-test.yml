@@ -20,6 +20,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # fetch-depth: 2 required — the coverage steps compare HEAD with its first parent
+          fetch-depth: 2
       - name: Install uv
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
         with:
@@ -51,6 +54,32 @@ jobs:
       - name: Run unit tests
         run: |
           just test
+      # The two coverage steps only report: there is no minimum. One Python version is enough,
+      # so the run's summary page shows the summary once.
+      - name: Measure coverage of the base branch
+        if: matrix.python-version == '3.13' && github.event_name == 'pull_request'
+        run: |
+          # HEAD is the pull request's merge commit, so its first parent is the base branch.
+          git worktree add --detach "$RUNNER_TEMP/base" HEAD^1
+          cd "$RUNNER_TEMP/base"
+          if just install && just test; then
+            uv run coverage json --quiet -o "$RUNNER_TEMP/coverage-base.json"
+          else
+            echo "::warning::The tests failed on the base branch, so the coverage summary has no comparison."
+          fi
+      - name: Summarize test coverage
+        if: matrix.python-version == '3.13'
+        run: |
+          uv run coverage json --quiet -o "$RUNNER_TEMP/coverage.json"
+          args=("$RUNNER_TEMP/coverage.json")
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            git diff --name-only --diff-filter=d HEAD^1 HEAD -- 'nominal/*.py' > "$RUNNER_TEMP/changed.txt"
+            args+=(--changed "$RUNNER_TEMP/changed.txt")
+          fi
+          if [ -f "$RUNNER_TEMP/coverage-base.json" ]; then
+            args+=(--base "$RUNNER_TEMP/coverage-base.json")
+          fi
+          uv run python .github/scripts/coverage_summary.py "${args[@]}" >> "$GITHUB_STEP_SUMMARY"
 
   build-packages:
     runs-on: depot-ubuntu-24.04-small
