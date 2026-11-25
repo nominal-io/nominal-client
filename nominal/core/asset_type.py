@@ -174,12 +174,7 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
         )
         with translate_grpc_errors():
             response = self._clients.assets.UpdateType(request)
-        try:
-            return self._refresh_from_api(response.type)
-        except ValueError as exc:
-            raise ValueError(
-                f"Asset type {self.rid!r} was updated, but the local snapshot could not be refreshed: {exc}"
-            ) from exc
+        return self._refresh_from_api(response.type)
 
     def delete(self) -> None:
         """Permanently delete this type and its incoming and outgoing link definitions.
