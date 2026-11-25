@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import re
 import threading
 import time
@@ -344,12 +345,12 @@ def test_user_values_are_escaped():
 def test_checklist_card_shows_the_commit_message_line_by_line():
     """A checklist's card shows its commit message line by line as escaped text, and no row without one."""
     clients = _offline_clients()
-    fields: dict[str, object] = dict(
+    base = Checklist(
         rid="ri.scout.checklist.1", name="Monitor", description="", properties={}, labels=[], _clients=clients
     )
     message = "Raise <b>limit</b>\n\nsource: 4f2a9c1"
-    loaded = Checklist(**fields, commit_id="commit", commit_message=message)  # type: ignore[arg-type]
-    manual = Checklist(**fields)  # type: ignore[arg-type]
+    loaded = dataclasses.replace(base, commit_id="commit", commit_message=message)
+    manual = dataclasses.replace(base, commit_id=None, commit_message=None)
     with set_display_options(show_link=False, fetch_details=False):
         card, manual_card = loaded._repr_html_(), manual._repr_html_()
     assert card is not None and manual_card is not None
