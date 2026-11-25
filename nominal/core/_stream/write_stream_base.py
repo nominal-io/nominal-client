@@ -153,5 +153,9 @@ class WriteStreamBase(abc.ABC, Generic[StreamType]):
         Stops any process timeout threads, and flushes any remaining batches.
 
         Args:
-            wait: If true, block until stream is closed.
+            wait: If true, block until stream is closed. The Python implementation waits
+                for outstanding uploads and raises the first unreported upload exception.
+
+        Raises:
+            Exception: An upload failure reported by the selected implementation.
         """
