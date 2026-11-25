@@ -424,7 +424,7 @@ def test_compute_export_jobs_subdivides_large_channel_into_sub_slices(
     jobs = handler._compute_export_jobs([channel], parent_range, batch_duration=batch_duration)
 
     # All sub-slices roll up under a single parent time_slice.
-    (job_list,) = jobs
+    (job_list,) = map(list, jobs)
     parent_slice = parent_range
     assert len(job_list) > 1
 
@@ -603,7 +603,7 @@ def test_mixed_raw_job_resolves_ambiguous_channels_for_its_own_window(
         tags={"flight": "a"},
         batch_duration=datetime.timedelta(seconds=10),
     )
-    first, second = plan
+    first, second = map(list, plan)
     assert len(first) == len(second) == 1
 
     ds.return_value = make_series_count_response([1])
@@ -666,6 +666,7 @@ def test_joined_export_rejects_duplicate_channel_names(mock_client, make_channel
 
 
 def test_joined_subdivisions_keep_tag_expansions_in_one_column(mock_client, make_channel, monkeypatch):
+    """A single worker can refill the queue mid-window without splitting tag-expanded columns."""
     channel = make_channel("signal")
     jobs = [_ExportJob([channel], _TimeRange(i, i), {}) for i in range(2)]
 
@@ -674,7 +675,9 @@ def test_joined_subdivisions_keep_tag_expansions_in_one_column(mock_client, make
         return [pl.DataFrame({"timestamp": [i], "signal": [None], "signal_a": [i], **({"signal_b": [7]} if i else {})})]
 
     monkeypatch.setattr("nominal.thirdparty.polars.polars_export_handler._export_job", export)
-    frames = PolarsExportHandler(mock_client)._export_dataframes(iter([jobs]), "timestamp", "epoch_nanoseconds", True)
+    frames = PolarsExportHandler(mock_client, num_workers=1)._export_dataframes(
+        iter([jobs]), "timestamp", "epoch_nanoseconds", True
+    )
     (frame,) = frames
     assert frame.to_dict(as_series=False) == {
         "timestamp": [0.0, 1.0],
@@ -719,7 +722,7 @@ def test_first_window_does_not_plan_the_remaining_export(
     plan = PolarsExportHandler(mock_client)._compute_export_jobs(
         [make_channel("signal")], _TimeRange(0, 10**15), batch_duration=datetime.timedelta(seconds=1)
     )
-    assert next(plan)[0].time_slice == _TimeRange(0, 10**9 - 1)
+    assert next(next(plan)).time_slice == _TimeRange(0, 10**9 - 1)
     assert planned == [_TimeRange(0, 10**9 - 1)]
 
 
@@ -741,3 +744,25 @@ def test_tag_expanded_compute_csv_preserves_string_values(
     assert df["timestamp_region_eu"].to_list() == ["00042"]
     assert df["timestamp"].to_list() == [None]
     assert df["count"].to_list() == [9007199254740993]
+
+
+def test_a_large_unjoined_window_starts_with_bounded_work(mock_client, make_channel, monkeypatch):
+    """The consumer can stop after one frame without planning or submitting the entire window."""
+    planned = []
+
+    def jobs():
+        for i in range(100):
+            planned.append(i)
+            yield _ExportJob([make_channel("signal")], _TimeRange(i, i), {})
+
+    def export(job, *_):
+        return [pl.DataFrame({"timestamp": [job.time_slice.start_time], "signal": [1]})]
+
+    monkeypatch.setattr("nominal.thirdparty.polars.polars_export_handler._export_job", export)
+    frames = PolarsExportHandler(mock_client, num_workers=3)._export_dataframes(
+        iter([jobs()]), "timestamp", "epoch_nanoseconds", join_batches=False
+    )
+    assert next(frames)["signal"].item() == 1
+    frames.close()
+    # Three worker slots plus at most one unsubmitted job for lookahead.
+    assert len(planned) <= 4

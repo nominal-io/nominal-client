@@ -4,7 +4,7 @@ import dataclasses
 import datetime
 import functools
 import logging
-from typing import Iterator, Mapping, Self, Sequence
+from typing import Iterable, Iterator, Mapping, Self, Sequence
 
 import polars as pl
 from nominal._utils.iterator_tools import batched
@@ -427,7 +427,9 @@ def _download_frames(
         wire_channels = {str(i): ch for i, ch in enumerate(job.channels)}
         request = compute_export_request(workspace, wire_channels, start, end, job.tags, job.buckets, job.resolution)
         with download_export(client, request) as file:
-            csv = pl.read_csv(file, infer_schema=False, schema_overrides={"timestamp": pl.Int64}, raise_if_empty=False)
+            csv = pl.read_csv(
+                file, infer_schema_length=0, schema_overrides={"timestamp": pl.Int64}, raise_if_empty=False
+            )
         if csv.is_empty():
             return [pl.DataFrame(schema={time_col: pl.Int64, **schema})] if join_batches else []
         columns = [pl.col("timestamp").alias(time_col)]
@@ -446,21 +448,18 @@ def _download_frames(
     return [df.select(time_col, *names, *(col for col in df.columns if col not in known)).sort(time_col)]
 
 
-def _join_window(
-    futures: Mapping[concurrent.futures.Future[list[pl.DataFrame]], _ExportJob], time_col: str
-) -> pl.DataFrame:
-    # Group temporal subdivisions by their requested channels. Tag-expanded columns
-    # may change between files. A single job can return separate SQL and compute frames.
-    by_group: dict[tuple[str, ...], list[concurrent.futures.Future[list[pl.DataFrame]]]] = collections.defaultdict(list)
-    for future, job in futures.items():
-        by_group[tuple(ch.name for ch in job.channels)].append(future)
+def _join_window(results: Sequence[tuple[_ExportJob, list[pl.DataFrame]]], time_col: str) -> pl.DataFrame:
+    # A single job can return separate SQL and compute frames. Only single-channel
+    # jobs can be subdivided in time, and tag-expanded columns can vary by subdivision.
+    by_group: dict[tuple[str, ...], list[list[pl.DataFrame]]] = collections.defaultdict(list)
+    for job, frames in results:
+        by_group[tuple(ch.name for ch in job.channels)].append(frames)
     groups: list[pl.DataFrame] = []
-    for jobs in by_group.values():
-        frames = [df for future in jobs for df in future.result()]
-        if len(jobs) > 1:
-            groups.append(pl.concat(frames, how="diagonal"))
+    for slices in by_group.values():
+        if len(slices) == 1:
+            groups.extend(slices[0])
         else:
-            groups.extend(frames)
+            groups.append(pl.concat([frame for batch in slices for frame in batch], how="diagonal"))
     if len(groups) == 1:
         return groups[0]
 
@@ -523,7 +522,7 @@ class PolarsExportHandler:
         buckets: int | None = None,
         resolution: IntegralNanosecondsDuration | None = None,
         batch_duration: datetime.timedelta | None = None,
-    ) -> Iterator[list[_ExportJob]]:
+    ) -> Iterator[Iterator[_ExportJob]]:
         """Plan channel groups once and yield jobs for successive output windows.
 
         `channels` is expected to be already filtered to exportable data types by the caller.
@@ -613,13 +612,15 @@ class PolarsExportHandler:
                 groups.append((template, step_ns))
         if not groups:
             return
-        for window in time_range.subdivide_ns(duration_ns):
-            jobs: list[_ExportJob] = []
+
+        def jobs_for_window(window: _TimeRange) -> Iterator[_ExportJob]:
             for template, step in groups:
                 subdivisions = window.subdivide_ns(step) if step is not None else (window,)
                 for bounds in subdivisions:
-                    jobs.extend(dataclasses.replace(template, time_slice=bounds).fit_query_limit())
-            yield jobs
+                    yield from dataclasses.replace(template, time_slice=bounds).fit_query_limit()
+
+        for window in time_range.subdivide_ns(duration_ns):
+            yield jobs_for_window(window)
 
     def _channel_groups(
         self,
@@ -732,40 +733,45 @@ class PolarsExportHandler:
 
     def _export_dataframes(
         self,
-        export_jobs: Iterator[list[_ExportJob]],
+        export_jobs: Iterator[Iterable[_ExportJob]],
         time_column: str,
         timestamp_type: _AnyExportableTimestampType,
         join_batches: bool,
     ) -> Iterator[pl.DataFrame]:
-        jobs = next(export_jobs, None)
+        jobs = ((window, job) for window, group in enumerate(export_jobs) for job in group)
+        upcoming = next(jobs, None)
+        pending: dict[concurrent.futures.Future[list[pl.DataFrame]], tuple[int, _ExportJob]] = {}
+        results: list[tuple[_ExportJob, list[pl.DataFrame]]] = []
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=self._num_workers)
         try:
-            pending: collections.deque[dict[concurrent.futures.Future[list[pl.DataFrame]], _ExportJob]] = (
-                collections.deque()
-            )
-            queued_jobs = 0
-            while True:
-                while jobs is not None:
-                    # Keep one window ahead. For unjoined frames, use spare worker slots for
-                    # later windows when the current windows contain only a few jobs.
-                    if len(pending) >= 2 and (join_batches or queued_jobs + len(jobs) > self._num_workers):
+            while upcoming is not None or pending:
+                while upcoming is not None and len(pending) < self._num_workers:
+                    window, job = upcoming
+                    # Joined frames can be wide. Prefetch only the next output window.
+                    if join_batches and pending and window > next(iter(pending.values()))[0] + 1:
                         break
-                    pending.append(
-                        {pool.submit(_export_job, job, self._client, time_column, join_batches): job for job in jobs}
-                    )
-                    queued_jobs += len(jobs)
-                    jobs = next(export_jobs, None)
-                if not pending:
-                    return
-                futures = pending.popleft()
-                queued_jobs -= len(futures)
+                    future = pool.submit(_export_job, job, self._client, time_column, join_batches)
+                    pending[future] = upcoming
+                    upcoming = next(jobs, None)
+
+                first = next(iter(pending))
+                window = pending[first][0]
                 if join_batches:
-                    joined = _join_window(futures, time_column)
-                    if not joined.is_empty():
-                        yield _format_time_col(joined, time_column, timestamp_type)
+                    # Submission order keeps a channel's temporal subdivisions sorted.
+                    _, job = pending.pop(first)
+                    results.append((job, first.result()))
+                    if (not pending or next(iter(pending.values()))[0] != window) and (
+                        upcoming is None or upcoming[0] != window
+                    ):
+                        joined = _join_window(results, time_column)
+                        results.clear()
+                        if not joined.is_empty():
+                            yield _format_time_col(joined, time_column, timestamp_type)
                 else:
-                    for future in concurrent.futures.as_completed(futures):
-                        for frame in future.result():
-                            yield _format_time_col(frame, time_column, timestamp_type)
+                    active = (future for future, (index, _) in pending.items() if index == window)
+                    done = next(concurrent.futures.as_completed(active))
+                    del pending[done]
+                    for frame in done.result():
+                        yield _format_time_col(frame, time_column, timestamp_type)
         finally:
             pool.shutdown(cancel_futures=True)
