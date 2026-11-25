@@ -19,6 +19,7 @@ from requests.adapters import DEFAULT_POOLSIZE, CaseInsensitiveDict, HTTPAdapter
 from urllib3.connection import HTTPConnection
 from urllib3.util.retry import Retry
 
+from nominal.core._utils.ai_agent import AI_AGENT_HEADER, ai_agent_header_value
 from nominal.exceptions import HeaderConflictError, NominalConfigError
 
 logger = logging.getLogger(__name__)
@@ -302,7 +303,7 @@ def create_conjure_service_client(
     transport_adapter = NominalRequestsAdapter(max_retries=retry, pool_maxsize=SERVICE_SESSION_POOL_SIZE)
     session = HeaderProviderSession(header_provider)
     # Replaces Requests' default headers; the adapter supplies Accept-Encoding.
-    session.headers = CaseInsensitiveDict({"User-Agent": user_agent})
+    session.headers = CaseInsensitiveDict({"User-Agent": user_agent, AI_AGENT_HEADER: ai_agent_header_value()})
     if service_config.security is not None:
         verify = service_config.security.trust_store_path
     else:
