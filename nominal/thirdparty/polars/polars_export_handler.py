@@ -670,7 +670,8 @@ class PolarsExportHandler:
         during iteration, including after earlier batches have been yielded.
 
         Args:
-            channels: Channels to export. Joined frames require distinct channel names.
+            channels: Channels to export. Frames carry channel names without a source dataset RID.
+                Keep each input channel’s ``data_source`` to identify its dataset.
             start: Start of the export time range (nanoseconds UTC).
             end: End of the export time range (nanoseconds UTC).
             tags: Exact tags to match. Export sizing uses the :ref:`compute-filter-limits`.
@@ -685,9 +686,14 @@ class PolarsExportHandler:
                 all channel groups for a single time slice. If False, raw SQL jobs yield frames
                 of channels with identical sample timestamps within that job and time slice.
                 Only sampled channels appear. Compute jobs yield their original channel groups.
+                Within a window, unjoined jobs can yield frames in any order.
 
         Yields:
             Polars DataFrames covering successive time slices of the export range.
+
+        Raises:
+            ValueError: On first iteration if ``join_batches=True`` and two exportable input channels
+                have the same name, even across datasets. This check runs before any export job starts.
         """
         # Ensure user has selected channels to export
         if not channels:

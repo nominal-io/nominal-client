@@ -66,6 +66,25 @@ Set `batch_duration` when you know how much time each frame should cover. This s
 - The default epoch timestamps are `Float64`. Use `timestamp_type="iso_8601"` for UTC datetimes with nanosecond precision.
 - Batches outer-join channels on timestamp by default, so missing values are nulls.
 
+### Identify the source dataset
+
+Frames carry channel names without a source dataset RID. If the requested names are unique, keep a lookup alongside the export:
+
+```python
+source_by_channel = {channel.name: channel.data_source for channel in channels}
+```
+
+Suppose two datasets both have an `rpm` channel. With the default `join_batches=True`, requesting both raises `ValueError` on the first iteration, before any export job starts. With `join_batches=False`, both datasets can yield a frame with an `rpm` column. Time windows arrive in order, but jobs within each window can finish in any order. To retain the source for same-named channels, export each dataset separately and label its output:
+
+```python
+handler = PolarsExportHandler(client)
+for dataset in (engine_dataset, pump_dataset):
+    folder = out / dataset.rid
+    folder.mkdir(parents=True, exist_ok=True)
+    for i, frame in enumerate(handler.export([dataset.get_channel("rpm")], start=run.start, end=end)):
+        frame.write_parquet(folder / f"batch_{i:04d}.parquet")
+```
+
 ### Export channels with different sample rates
 
 For hundreds of slow channels alongside a few high-rate channels, pass all the channels in one call with `join_batches=False`. Within each raw SQL job and time window, channels with identical timestamps share a frame. A dropped sample or a clock offset can put two channels of the same nominal rate into separate frames. Each frame contains only channels with samples in that window. Compute jobs yield one frame per job.
