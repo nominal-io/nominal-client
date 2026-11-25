@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parents[1] / ".github" / "scripts" / "coverage_summary.py"
 
 # GitHub removes HTML colors from Markdown, so the summary colors text with math notation.
@@ -37,24 +39,31 @@ def write_report(path: Path, total: float, files: dict[str, tuple[int, int, floa
     return path
 
 
-def write_changed(path: Path, *names: str) -> Path:
-    path.write_text("".join(f"{name}\n" for name in names))
+def write_changed(path: Path, *lines: str) -> Path:
+    """Write the lines that `git diff --name-status` prints for the changed files."""
+    path.write_text("".join(f"{line}\n" for line in lines))
     return path
 
 
 def summarize(*args: object) -> str:
-    command = [sys.executable, str(SCRIPT), *map(str, args)]
-    return subprocess.run(command, capture_output=True, encoding="utf-8", check=True).stdout
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), *map(str, args)],
+        check=False,
+        capture_output=True,
+        encoding="utf-8",
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
 
 
-def test_run_without_pull_request_shows_only_the_total(tmp_path: Path):
+def test_run_without_pull_request_shows_only_the_total(tmp_path: Path) -> None:
     """A push has no changed files and no base, so the summary is the total alone."""
     head = write_report(tmp_path / "head.json", 81.26, {"nominal/a.py": (10, 5, 50.0)})
 
     assert summarize(head) == "## Test coverage: 81.3%\n"
 
 
-def test_pull_request_compares_changed_files_with_the_base(tmp_path: Path):
+def test_pull_request_compares_changed_files_with_the_base(tmp_path: Path) -> None:
     """Only measured changed files are listed, and each number shows its change from the base: good or bad."""
     head = write_report(
         tmp_path / "head.json",
@@ -62,7 +71,8 @@ def test_pull_request_compares_changed_files_with_the_base(tmp_path: Path):
         {
             "nominal/down.py": (200, 100, 50.0),
             "nominal/new.py": (10, 1, 90.0),
-            "nominal/same.py": (50, 20, 60.04),
+            "nominal/renamed.py": (30, 3, 90.0),
+            "nominal/same.py": (50, 20, 60.0),
             "nominal/untouched.py": (40, 36, 10.0),
             "nominal/up.py": (405, 87, 79.64),
         },
@@ -72,18 +82,20 @@ def test_pull_request_compares_changed_files_with_the_base(tmp_path: Path):
         81.0,
         {
             "nominal/down.py": (190, 93, 50.8),
-            "nominal/same.py": (50, 20, 60.0),
+            "nominal/old_name.py": (30, 6, 80.0),
+            "nominal/same.py": (50, 20, 60.04),  # lower by less than the rounding, so it counts as no change
             "nominal/untouched.py": (40, 32, 20.0),
             "nominal/up.py": (400, 98, 75.5),
         },
     )
     changed = write_changed(
         tmp_path / "changed.txt",
-        "nominal/__init__.py",  # changed, but not measured
-        "nominal/down.py",
-        "nominal/new.py",
-        "nominal/same.py",
-        "nominal/up.py",
+        "M\tnominal/core/__init__.py",  # changed, but not measured
+        "M\tnominal/down.py",
+        "A\tnominal/new.py",
+        "R090\tnominal/old_name.py\tnominal/renamed.py",
+        "M\tnominal/same.py",
+        "M\tnominal/up.py",
     )
 
     assert summarize(head, "--base", base, "--changed", changed) == (
@@ -95,6 +107,7 @@ def test_pull_request_compares_changed_files_with_the_base(tmp_path: Path):
         "| --- | ---: | ---: | ---: |\n"
         f"| `nominal/down.py` | 200 | 100 ({RED % '+7'}) | 50.0% ({RED % '-0.8'}) |\n"
         "| `nominal/new.py` | 10 | 1 | 90.0% (new) |\n"
+        f"| `nominal/renamed.py` | 30 | 3 ({GREEN % '-3'}) | 90.0% ({GREEN % '+10.0'}) |\n"
         "| `nominal/same.py` | 50 | 20 (-) | 60.0% (-) |\n"
         f"| `nominal/up.py` | 405 | 87 ({GREEN % '-11'}) | 79.6% ({GREEN % '+4.1'}) |\n"
         "\n"
@@ -104,11 +117,12 @@ def test_pull_request_compares_changed_files_with_the_base(tmp_path: Path):
     )
 
 
-def test_pull_request_without_measured_changes_says_so(tmp_path: Path):
-    """A pull request that changes only unmeasured files gets a sentence instead of an empty table."""
+@pytest.mark.parametrize("changed_lines", [[], ["M\tnominal/core/__init__.py"]], ids=["nothing", "unmeasured file"])
+def test_pull_request_without_measured_changes_says_so(tmp_path: Path, changed_lines: list[str]) -> None:
+    """A pull request that changes no measured file gets a sentence instead of an empty table."""
     head = write_report(tmp_path / "head.json", 81.0, {"nominal/a.py": (10, 5, 50.0)})
     base = write_report(tmp_path / "base.json", 81.0, {"nominal/a.py": (10, 5, 50.0)})
-    changed = write_changed(tmp_path / "changed.txt", "nominal/__init__.py")
+    changed = write_changed(tmp_path / "changed.txt", *changed_lines)
 
     assert summarize(head, "--base", base, "--changed", changed) == (
         "## Test coverage: 81.0% (-)\n"
@@ -121,10 +135,10 @@ def test_pull_request_without_measured_changes_says_so(tmp_path: Path):
     )
 
 
-def test_pull_request_without_base_report_shows_no_comparison(tmp_path: Path):
+def test_pull_request_without_base_report_shows_no_comparison(tmp_path: Path) -> None:
     """When the base branch could not be measured, the summary gives the numbers and says why they stand alone."""
     head = write_report(tmp_path / "head.json", 81.0, {"nominal/a.py": (10, 5, 50.0)})
-    changed = write_changed(tmp_path / "changed.txt", "nominal/a.py")
+    changed = write_changed(tmp_path / "changed.txt", "M\tnominal/a.py")
 
     assert summarize(head, "--changed", changed) == (
         "## Test coverage: 81.0%\n"

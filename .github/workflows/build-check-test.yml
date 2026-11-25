@@ -56,9 +56,9 @@ jobs:
   coverage:
     runs-on: depot-ubuntu-24.04
     steps:
+      # fetch-depth: 2 required — the coverage steps compare HEAD with its first parent
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # fetch-depth: 2 required — the coverage steps compare HEAD with its first parent
           fetch-depth: 2
       - name: Install uv
         uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
@@ -87,14 +87,16 @@ jobs:
           if just install && just test; then
             uv run coverage json --quiet -o "$RUNNER_TEMP/coverage-base.json"
           else
-            echo "::warning::The tests failed on the base branch, so the coverage summary has no comparison."
+            echo "::warning::The base branch could not be measured, so the coverage summary has no comparison."
           fi
       - name: Summarize test coverage
         run: |
           uv run coverage json --quiet -o "$RUNNER_TEMP/coverage.json"
           args=("$RUNNER_TEMP/coverage.json")
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            git diff --name-only --diff-filter=d HEAD^1 HEAD -- 'nominal/*.py' > "$RUNNER_TEMP/changed.txt"
+            # quotePath=false keeps non-ASCII paths as they are, and -M pairs a renamed file with its old path.
+            git -c core.quotePath=false diff --name-status -M --diff-filter=d HEAD^1 HEAD -- 'nominal/*.py' \
+              > "$RUNNER_TEMP/changed.txt"
             args+=(--changed "$RUNNER_TEMP/changed.txt")
           fi
           if [ -f "$RUNNER_TEMP/coverage-base.json" ]; then
