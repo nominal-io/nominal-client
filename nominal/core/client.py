@@ -1280,7 +1280,8 @@ class NominalClient:
         Raises:
             NominalConfigError: If no default workspace can be resolved.
             NominalError: If the definition is invalid or creation fails.
-            ValueError: If creation succeeded but the SDK could not read the returned definition.
+            ValueError: If a supplied series kind is unsupported, before the request is sent.
+                Also raised if creation succeeded but the SDK could not read the returned definition.
         """
         request = asset_pb2.CreateTypeRequest(
             name=name,

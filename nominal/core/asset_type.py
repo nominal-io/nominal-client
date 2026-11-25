@@ -191,7 +191,8 @@ class AssetType(HasRid, RefreshableGrpcMixin[asset_pb2.Type]):
 
         Raises:
             NominalError: If the definition is invalid or the update fails.
-            ValueError: If the update succeeded but the SDK could not read the returned definition.
+            ValueError: If a supplied series kind is unsupported, before the request is sent.
+                Also raised if the update succeeded but the SDK could not read the returned definition.
                 This instance retains its previous snapshot.
         """
         request = asset_pb2.UpdateTypeRequest(
