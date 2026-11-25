@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import json
 import logging
 import shutil
@@ -7,15 +8,17 @@ import tempfile
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from typing import BinaryIO
+from typing import BinaryIO, Literal
 
 import requests
 from google.protobuf.timestamp_pb2 import Timestamp
 from urllib3.exceptions import HTTPError
 
 from nominal.core._utils.grpc_tools import translate_grpc_errors
+from nominal.core.bounds import Bounds
 from nominal.core.channel import Channel
 from nominal.core.client import NominalClient
+from nominal.core.dataset import _get_datasets
 from nominal.protos.compute.v1 import expressions_pb2
 from nominal.protos.dataexports.v1 import data_exports_pb2 as data
 from nominal.protos.exportjobs.v1 import export_jobs_pb2 as jobs
@@ -69,15 +72,54 @@ def raw_storage_types(
         yield row["channel"], row["data_type"]
 
 
-def raw_export_query(kind: str, channels: Sequence[Channel], start: int, end: int, tags: Mapping[str, str]) -> str:
+RawSource = Literal["points_int", "points_double", "points_string", "mixed_numeric"]
+
+_RAW_SOURCES: dict[frozenset[str], RawSource] = {
+    frozenset({"INT64"}): "points_int",
+    frozenset({"DOUBLE"}): "points_double",
+    frozenset({"STRING"}): "points_string",
+    frozenset({"INT64", "DOUBLE"}): "mixed_numeric",
+}
+
+
+def raw_sources(
+    client: NominalClient, channels: Sequence[Channel], tags: Mapping[str, str]
+) -> dict[tuple[str, str], RawSource]:
+    by_dataset: dict[str, list[Channel]] = collections.defaultdict(list)
+    for ch in channels:
+        by_dataset[ch.data_source].append(ch)
+    sources = {}
+    clients = client._clients
+    for ds in _get_datasets(clients.auth_header, clients.catalog, by_dataset):
+        if (
+            ds.derived_definition is not None
+            or ds.external_connection_metadata is not None
+            or ds.default_group_by_and_aggregation_config is not None
+        ):
+            continue
+        storage: dict[str, set[str]] = collections.defaultdict(set)
+        for name, kind in raw_storage_types(client, by_dataset[ds.rid], tags):
+            storage[name].add(kind)
+        for name, kinds in storage.items():
+            source = _RAW_SOURCES.get(frozenset(kinds))
+            if source is None:
+                raise ValueError(
+                    f"Cannot export channel {name!r} from {ds.rid} with physical storage types {sorted(kinds)}"
+                )
+            sources[ds.rid, name] = source
+    return sources
+
+
+def raw_export_query(kind: RawSource, channels: Sequence[Channel], bounds: Bounds, tags: Mapping[str, str]) -> str:
     # All caller-controlled strings are SQL literals.
     start_literal, end_literal = (
-        _SecondsNanos.from_nanoseconds(ns).to_iso8601().removesuffix("Z").replace("T", " ") for ns in (start, end)
+        _SecondsNanos.from_nanoseconds(ns).to_iso8601().removesuffix("Z").replace("T", " ")
+        for ns in (bounds.start, bounds.end)
     )
     where = (
         _channel_filter(channels, tags) + f" AND ts >= TIMESTAMP '{start_literal}' AND ts <= TIMESTAMP '{end_literal}'"
     )
-    if kind in {"points_double", "points_int", "points_string"}:
+    if kind != "mixed_numeric":
         source = f'SELECT ts, channel, "value" FROM {kind}' + where
     else:
         # The channel API can report DOUBLE for physically stored Int64. A scalar UNION would round large integers.
@@ -92,8 +134,7 @@ def raw_export_query(kind: str, channels: Sequence[Channel], start: int, end: in
 def compute_export_request(
     workspace: str,
     channels: Mapping[str, Channel],
-    start: int,
-    end: int,
+    bounds: Bounds,
     tags: Mapping[str, str],
     buckets: int | None,
     resolution: int | None,
@@ -105,9 +146,9 @@ def compute_export_request(
     else:
         spacing = data.ExportResolution(full=data.FullResolution())
     start_time = Timestamp()
-    start_time.FromNanoseconds(start)
+    start_time.FromNanoseconds(bounds.start)
     end_time = Timestamp()
-    end_time.FromNanoseconds(end)
+    end_time.FromNanoseconds(bounds.end)
     definition = data.ExportDefinition(
         context=expressions_pb2.ComputeContext(),
         start_time=start_time,
