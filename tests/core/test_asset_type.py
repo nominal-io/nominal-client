@@ -146,6 +146,11 @@ def test_series_requirement_replacement_distinguishes_never_set_and_cleared() ->
     kind.update(name="Renamed")
     assert not clients.assets.UpdateType.call_args.args[0].HasField("data_requirements")
 
+    clients.assets.UpdateType.reset_mock()
+    with pytest.raises(ValueError, match="Unsupported required series type"):
+        kind.update(required_series={"engine/RPM": "DOUBLE"})  # type: ignore[dict-item]
+    clients.assets.UpdateType.assert_not_called()
+
     empty = asset_pb2.DataRequirements(series=asset_pb2.SeriesRequirements())
     clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(
         type=asset_pb2.Type(rid="kind", data_requirements=empty)
