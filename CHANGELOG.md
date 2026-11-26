@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.187.0](https://github.com/nominal-io/nominal-client/compare/v1.186.0...v1.187.0) (2026-11-26)
+
+
+### Features
+
+* add IngestionJob.file_bounds and Bounds.duration ([#1340](https://github.com/nominal-io/nominal-client/issues/1340)) ([43b0e6b](https://github.com/nominal-io/nominal-client/commit/43b0e6b1093dda9e6086ecbe1bfcd6c130109717))
+* expose the commit message of a loaded checklist ([#1350](https://github.com/nominal-io/nominal-client/issues/1350)) ([3ef2e25](https://github.com/nominal-io/nominal-client/commit/3ef2e25f51535ce7f28ce2860f1e37638b7e0325))
+* let migrate prep count dataset files with --include-dataset-files ([#1347](https://github.com/nominal-io/nominal-client/issues/1347)) ([46bfee4](https://github.com/nominal-io/nominal-client/commit/46bfee4416ecc24715154aaec45837fe939bd819))
+* report the AI coding agent in an X-Nominal-AI-Agent header ([#1348](https://github.com/nominal-io/nominal-client/issues/1348)) ([008bfd4](https://github.com/nominal-io/nominal-client/commit/008bfd4e747881f941d221f01891850b663ea4cb))
+* support asset type requirements, search and deletion ([#1345](https://github.com/nominal-io/nominal-client/issues/1345)) ([90f7dfe](https://github.com/nominal-io/nominal-client/commit/90f7dfec94fbfe3bf0dd981d0badb001f169ec4d))
+
+
+### Bug Fixes
+
+* upgrade Nominal API bindings and compute to 0.1542.0 ([#1336](https://github.com/nominal-io/nominal-client/issues/1336)) ([21432ec](https://github.com/nominal-io/nominal-client/commit/21432ece218d2c0aa037a261fdfb592f96884711))
+
 ## [1.186.0](https://github.com/nominal-io/nominal-client/compare/v1.185.0...v1.186.0) (2026-11-18)
 
 
