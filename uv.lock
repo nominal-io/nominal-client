@@ -1419,7 +1419,7 @@ wheels = [
 
 [[package]]
 name = "nominal"
-version = "1.186.0"
+version = "1.187.0"
 source = { editable = "." }
 dependencies = [
     { name = "certifi" },
@@ -1579,8 +1579,10 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4d/d7/777fd2a6fdc0b3cba88f669db18cf1f821424ee2d3595e661f218d61f28e/nominal_compute-0.1542.0-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:be3a232e89372b685490c74f451272f6bd21d42475361f6e83de6610e9015c25", size = 2631875, upload-time = "2026-11-18T21:00:26.913Z" },
     { url = "https://files.pythonhosted.org/packages/5e/ed/6f43637536fc532a5d8c1136db782b7984c1cc05865b63f1d115a89f3a8d/nominal_compute-0.1542.0-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:616e50b0cd72786cb219b353bb2d1c6a359afbb0b43dee0dc10e9f855526dcf5", size = 2834452, upload-time = "2026-11-18T21:00:28.443Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/c6/01df2fd57185626d68728721276e4ce8a42ed002a738b3df7b092fabb765/nominal_compute-0.1542.0-cp311-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:8ddbd7de637c3a16aa1dde8f6e6bb8987decae8830764dd211b663839429eb9f", size = 2750401, upload-time = "2026-11-18T21:00:29.51Z" },
     { url = "https://files.pythonhosted.org/packages/42/1b/a55381869bee4d66e67093c88941b4fcd0a9dda4b4795973e287fa22aa48/nominal_compute-0.1542.0-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:cf81497f36e4c2d4369304f6faa3b91aa040c6fbdb175b7e900f635b6f4170b0", size = 2915131, upload-time = "2026-11-18T21:00:30.621Z" },
     { url = "https://files.pythonhosted.org/packages/9c/2f/2bb810dda2782981286eebc27cc4d976e66ebd2b3b8f9d3d6756429d7cac/nominal_compute-0.1542.0-cp311-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:2e04261f07b794cb93f70e6587a3db4e4b925cd234b31db5b8d48ca001f8e6d4", size = 3005199, upload-time = "2026-11-18T21:00:31.694Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/53/193d0b1b0ba4ad1544763140908a030a6a44692eb431ca9b73e5c50d8603/nominal_compute-0.1542.0-cp311-abi3-musllinux_1_2_armv7l.whl", hash = "sha256:8c3497492e7cabdf1b7da336dbf054bd5129643ed8d3154073aad5efd6fb6905", size = 3015263, upload-time = "2026-11-18T21:00:32.706Z" },
     { url = "https://files.pythonhosted.org/packages/5a/34/4638202be25a8d7567539199da7d52c61448c940daf70f3ae2d7b89090dc/nominal_compute-0.1542.0-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:41e211f05c469f235ce49028ecc16898e9686d8ebd9e5ff0f9159d9ed6bce28f", size = 3092297, upload-time = "2026-11-18T21:00:34.031Z" },
     { url = "https://files.pythonhosted.org/packages/8b/ef/600e441355f9a964c9bed3f22ad1ef44c1f8eb5084834a6c1f5fea3d6a11/nominal_compute-0.1542.0-cp311-abi3-win_amd64.whl", hash = "sha256:c2f633efd2606f8ca36c92360fe82c4158964a89b05dc49482890a4a453230ed", size = 2613539, upload-time = "2026-11-18T21:00:35.225Z" },
 ]
