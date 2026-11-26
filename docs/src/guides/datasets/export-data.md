@@ -56,12 +56,93 @@ for i, df in enumerate(
 `start` and `end` are integer epoch nanoseconds.
 For data on the run's asset, get the dataset with {py:meth}`~nominal.core.Asset.get_dataset` instead, as in [Runs](/guides/runs.md#create-a-run-from-datasets).
 
-Some behavior to check before you rely on an export:
+For raw channels that each match one series in a stored dataset, the handler downloads typed Parquet and aligns channels in Polars. A channel split across ingest files can join a raw job when exactly one series matches its tags in that job’s time window. Channels that still match multiple series in that window use compute. Decimated and derived channels also use compute. Both paths require async export jobs in the selected workspace.
+
+Set `batch_duration` to choose a time window. With no sizing options, unjoined full-resolution exports use two-minute windows when all channels have known series counts in stored datasets without a default aggregation. For long numeric selections that fit in one metadata request, the handler can combine the entire range into one window if it contains at most one million samples. A missing count keeps the two-minute windows. Joined and decimated exports estimate the window from channel rates, targeting 25 million samples by default. Set `points_per_dataframe` to request a different target or enable rate-based sizing for native frames. An explicit duration skips rate estimation unless you also set `points_per_request`.
+
+When you set `points_per_request`, the handler estimates how many samples each channel contributes to a job. For a raw channel with one matching series and one storage type, a complete sample count over the selection caps that estimate. A short burst within a sampled interval can still exceed the target.
+
+Each job can include up to 256 channels by default. The handler yields time windows in order. Joined exports can process two adjacent windows concurrently. With `join_batches=False`, the handler can use spare workers for later windows when each window contains only a few jobs. Use `num_workers` to tune concurrency for your deployment and available memory.
+
 
 - The handler is experimental. It exports `DOUBLE`, `INT` and `STRING` channels, and skips other types with a warning.
-- A batch that fails to download is logged and skipped, so check the logs and the row coverage.
-- Output timestamps are `Float64`, which can't tell apart every nanosecond at current epoch values.
-- Batches outer-join channels on timestamp by default, so missing values are nulls. Pass `join_batches=False` for one frame per channel group.
+- The deployment needs export storage configured. Iteration raises if a job or its download fails. Batches yielded before the failure are still available.
+- The default epoch timestamps are `Float64`. Use `timestamp_type="iso_8601"` for UTC datetimes with nanosecond precision.
+- Batches outer-join channels on timestamp by default, so missing values are nulls.
+
+Raw SQL reads the physical storage type from the SQL channel catalog. A channel reported as `DOUBLE` can contain signed integers. Its raw frames preserve `Int64` values, including counters above `2**53`. An unsupported physical type such as `UINT64` on an otherwise eligible numeric channel raises `ValueError` during planning. If a channel changes between signed integers and floats, a window containing both uses `Float64` only if every integer converts exactly. Otherwise iteration raises `ValueError`. Select a tag or a window that isolates the storage type to export those samples separately.
+
+### Identify the source dataset
+
+Frames carry channel names without a source dataset RID. If the requested names are unique, keep a lookup alongside the export:
+
+```python
+source_by_channel = {channel.name: channel.data_source for channel in channels}
+```
+
+Suppose two datasets both have an `rpm` channel. With the default `join_batches=True`, requesting both raises `ValueError` on the first iteration, before any export job starts. With `join_batches=False`, both datasets can yield a frame with an `rpm` column. Time windows arrive in order, but jobs within each window can finish in any order. To retain the source for same-named channels, export each dataset separately and label its output:
+
+```python
+handler = PolarsExportHandler(client)
+for dataset in (engine_dataset, pump_dataset):
+    folder = out / dataset.rid
+    folder.mkdir(parents=True, exist_ok=True)
+    for i, frame in enumerate(handler.export([dataset.get_channel("rpm")], start=run.start, end=end)):
+        frame.write_parquet(folder / f"batch_{i:04d}.parquet")
+```
+
+### Export channels with different sample rates
+
+For hundreds of slow channels alongside a few high-rate channels, pass all the channels in one call with `join_batches=False`. Within each raw SQL job and time window, channels with identical timestamps share a frame. A dropped sample or a clock offset can put two channels of the same nominal rate into separate frames. Each frame contains only channels with samples in that window. Compute jobs yield one frame per job.
+
+Four 10 kHz channels contribute 4.8 million samples per two-minute window. Shorten the window or lower `num_workers` to reduce peak memory. For long, sparse recordings, a longer `batch_duration` can put hours of data in a single job.
+
+```python
+frames = PolarsExportHandler(client).export(
+    channels,
+    start=run.start,
+    end=end,
+    join_batches=False,
+    timestamp_type="iso_8601",
+)
+for i, frame in enumerate(frames):
+    frame.write_parquet(out / f"native_{i:04d}.parquet")
+```
+
+### Tune an export
+
+Enable the Polars export logger to see the planned window duration, channel groups and worker count. Each completed download reports its SQL or compute source, seconds from submission until the result was observed ready, transferred bytes and download seconds. The handler also logs the estimated frame bytes returned by each channel group before joining. Peak process memory includes concurrent groups and temporary allocations.
+
+```python
+import logging
+
+logging.basicConfig()
+logging.getLogger("nominal.thirdparty.polars").setLevel(logging.DEBUG)
+```
+
+| What you observe | What to try |
+| --- | --- |
+| Many small files and most time spent waiting for jobs | Increase `batch_duration` to put more samples in each job. |
+| Large files or high peak memory | Shorten `batch_duration`, or reduce `num_workers` to hold fewer downloads and frames at once. |
+| Wide joined frames with many nulls | Use `join_batches=False` if the consumer can process native clocks independently. |
+| Window sizes should follow an estimated number of samples | Set `points_per_dataframe` and omit `batch_duration`. Use `points_per_request` if each job also needs its own target. |
+
+Compare the same channels and time range on the same connection. This example streams each result and reports both time to first frame and total elapsed time:
+
+```python
+from datetime import timedelta
+from time import perf_counter
+
+for duration in (None, timedelta(minutes=5)):
+    started = perf_counter()
+    first = None
+    for frame in PolarsExportHandler(client).export(
+        channels, run.start, end, batch_duration=duration, join_batches=False
+    ):
+        if first is None:
+            first = perf_counter() - started
+    print(duration, "first frame (s)", first, "total (s)", perf_counter() - started)
+```
 
 ## Filter by tags
 

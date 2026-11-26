@@ -539,14 +539,14 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
             return expressions_pb2.SeriesExpression(log=expressions_pb2.LogExpression(channel_selection=channel))
         raise ValueError(f"Unsupported channel data type: {self.data_type}")
 
-    def _decimate_request(
+    def _series_summary_input(
         self,
         start: str | datetime | IntegralNanosecondsUTC,
         end: str | datetime | IntegralNanosecondsUTC,
         tags: Mapping[str, str] | None = None,
         buckets: int | None = None,
         resolution: int | None = None,
-    ) -> execution_results_pb2.ComputationResult:
+    ) -> execution_inputs_pb2.ExecutionInput:
         summarization = None
         if buckets is not None:
             summarization = execution_options_pb2.SeriesSummarization(
@@ -556,18 +556,26 @@ class Channel(RefreshableGrpcMixin[channel_metadata_pb2.ChannelMetadata]):
             summarization = execution_options_pb2.SeriesSummarization(
                 fixed_resolution=execution_options_pb2.FixedResolutionSummary(resolution_nanos=resolution)
             )
-        request = compute_pb2.ComputeRequest(
-            input=execution_inputs_pb2.ExecutionInput(
-                start=_SecondsNanos.from_flexible(start).to_proto(),
-                end=_SecondsNanos.from_flexible(end).to_proto(),
-                computation=computation_spec_pb2.ComputationSpec(
-                    series_summary=computation_spec_pb2.SeriesSummarySpec(
-                        input=self._to_proto_compute_series(tags=tags), summarization=summarization
-                    )
-                ),
-                context=expressions_pb2.ComputeContext(),
-            )
+        return execution_inputs_pb2.ExecutionInput(
+            start=_SecondsNanos.from_flexible(start).to_proto(),
+            end=_SecondsNanos.from_flexible(end).to_proto(),
+            computation=computation_spec_pb2.ComputationSpec(
+                series_summary=computation_spec_pb2.SeriesSummarySpec(
+                    input=self._to_proto_compute_series(tags=tags), summarization=summarization
+                )
+            ),
+            context=expressions_pb2.ComputeContext(),
         )
+
+    def _decimate_request(
+        self,
+        start: str | datetime | IntegralNanosecondsUTC,
+        end: str | datetime | IntegralNanosecondsUTC,
+        tags: Mapping[str, str] | None = None,
+        buckets: int | None = None,
+        resolution: int | None = None,
+    ) -> execution_results_pb2.ComputationResult:
+        request = compute_pb2.ComputeRequest(input=self._series_summary_input(start, end, tags, buckets, resolution))
         with translate_grpc_errors():
             return self._clients.compute.Compute(request).result
 
@@ -652,18 +660,16 @@ def _create_series_from_channel(
         raise ValueError(f"Unsupported channel data type: {data_type}")
 
 
-def _batch_check_channels_have_data(
+def _batch_series_counts(
     clients: Channel._Clients,
     channels: Sequence[Channel],
     tag_filters: scout_compute_api.TagFilters | None,
     start: api.Timestamp,
     end: api.Timestamp,
-) -> tuple[list[Channel], list[str]]:
+) -> list[tuple[Channel, int | None]]:
     """Check a batch of channels for data presence via a single batchGetSeriesCount call.
 
-    Returns a tuple of:
-        - channels confirmed to have data (series_count > 0)
-        - names of channels with underconstrained tags (series_count > 1)
+    Omit confirmed zeros. Pair each remaining channel with its series count or None for an unknown count.
 
     Note:
         Request may fail if rate limits are breached, too many series are queried, bounds are invalid
@@ -684,18 +690,11 @@ def _batch_check_channels_have_data(
     )
     response = clients.datasource.batch_get_series_count(clients.auth_header, request)
 
-    channels_with_data: list[Channel] = []
-    underconstrained: list[str] = []
-    for channel, result in zip(channels, response.responses, strict=True):
-        count = result.series_count
-        if count is not None and count > 0:
-            channels_with_data.append(channel)
-            # Multiple series for a single channel+tags means the tags don't fully
-            # constrain the data — results may contain duplicate timestamps.
-            if count > 1:
-                underconstrained.append(channel.name)
-
-    return channels_with_data, underconstrained
+    return [
+        (channel, result.series_count)
+        for channel, result in zip(channels, response.responses, strict=True)
+        if result.series_count != 0
+    ]
 
 
 def filter_channels_with_data(
@@ -724,6 +723,23 @@ def filter_channels_with_data(
     Yields:
         Channel objects for each input channel confirmed to have data in the range.
     """
+    for channel, count in _channels_with_series_counts(
+        channels, tags=tags, start_time=start_time, end_time=end_time, num_workers=num_workers, batch_size=batch_size
+    ):
+        if count is not None:
+            yield channel
+
+
+def _channels_with_series_counts(
+    channels: Sequence[Channel],
+    *,
+    tags: Mapping[str, str] | None,
+    start_time: datetime | IntegralNanosecondsUTC,
+    end_time: datetime | IntegralNanosecondsUTC,
+    num_workers: int,
+    batch_size: int = 200,
+) -> Iterator[tuple[Channel, int | None]]:
+    """Yield matched channels with their series count, or None if the check failed."""
     if not channels:
         return
 
@@ -732,12 +748,11 @@ def filter_channels_with_data(
     api_end = _SecondsNanos.from_flexible(end_time).to_api()
     tag_filters = build_compute_tag_filter(tags)
 
-    matched_keys: set[tuple[str, str]] = set()
-    all_underconstrained: list[str] = []
+    counts: dict[tuple[str, str], int | None] = {}
     still_failing: list[Channel] = []
 
     check_batch = functools.partial(
-        _batch_check_channels_have_data,
+        _batch_series_counts,
         clients,
         tag_filters=tag_filters,
         start=api_start,
@@ -745,7 +760,7 @@ def filter_channels_with_data(
     )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as pool:
-        pending: dict[concurrent.futures.Future[tuple[list[Channel], list[str]]], Sequence[Channel]] = {
+        pending: dict[concurrent.futures.Future[list[tuple[Channel, int | None]]], Sequence[Channel]] = {
             pool.submit(check_batch, batch): batch for batch in batched(channels, batch_size)
         }
 
@@ -754,9 +769,8 @@ def filter_channels_with_data(
             for future in done:
                 batch = pending.pop(future)
                 try:
-                    matched, underconstrained = future.result()
+                    matched = future.result()
                 except Exception:
-                    # Series count calculations may fail for a myriad of reasons, such as
                     # A single-channel request that failed is already a retry (or was submitted
                     # that way by the caller via batch_size=1); don't retry indefinitely.
                     if len(batch) == 1:
@@ -770,21 +784,17 @@ def filter_channels_with_data(
                         pending[pool.submit(check_batch, [ch])] = [ch]
                     continue
 
-                for ch in matched:
-                    matched_keys.add((ch.data_source, ch.name))
-                all_underconstrained.extend(underconstrained)
+                counts.update(((ch.data_source, ch.name), count) for ch, count in matched)
 
     if still_failing:
-        # Both the batch and the individual retry failed — we can't verify data exists, so
-        # exclude these channels rather than admitting. Admitting would run expensive PPS
-        # compute downstream on channels the export would likely fail on anyway.
         logger.warning(
-            "Data-presence check failed for %d channels even after individual retry; "
-            "treating as having no data and excluding from export: %s",
+            "Could not verify data presence for %d channels: %s",
             len(still_failing),
             ", ".join(ch.name for ch in still_failing),
         )
+        counts.update(((ch.data_source, ch.name), None) for ch in still_failing)
 
+    all_underconstrained = [name for (_, name), count in counts.items() if count is not None and count > 1]
     if all_underconstrained:
         sample = all_underconstrained[:10]
         joined = ", ".join(sample)
@@ -798,5 +808,6 @@ def filter_channels_with_data(
 
     # Yield in original input order
     for channel in channels:
-        if (channel.data_source, channel.name) in matched_keys:
-            yield channel
+        key = (channel.data_source, channel.name)
+        if key in counts:
+            yield channel, counts[key]

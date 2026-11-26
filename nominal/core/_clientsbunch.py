@@ -37,6 +37,7 @@ from nominal.protos.comments.v1 import comments_pb2_grpc
 from nominal.protos.compute.v1 import compute_pb2_grpc
 from nominal.protos.datareview.v2 import data_review_pb2_grpc
 from nominal.protos.event.v2 import event_pb2_grpc
+from nominal.protos.exportjobs.v1 import export_jobs_pb2_grpc
 from nominal.protos.file_store.v1 import drives_pb2_grpc, files_pb2_grpc
 from nominal.protos.ingest.v2 import containerized_extractor_pb2_grpc, ingest_service_pb2_grpc
 from nominal.protos.integrations.v1 import integrations_pb2_grpc
@@ -145,6 +146,7 @@ class ClientsBunch:
     checklist_execution: scout_checklistexecution_api.ChecklistExecutionService
     checklist: scout_checks_api.ChecklistService
     compute: compute_pb2_grpc.ComputeServiceStub
+    export_jobs: export_jobs_pb2_grpc.ExportJobServiceStub
     dataexport: scout_dataexport_api.DataExportService
     datasource: scout_datasource.DataSourceService
     ingest_jobs: ingest_api.IngestJobService
@@ -309,8 +311,9 @@ class ClientsBunch:
             user_agent=agent,
             auth_header=f"Bearer {token}",
             header_provider=header_provider,
-            # A replay can mask a committed write with a refusal and trigger incorrect skill-file cleanup.
+            # Replaying these writes can duplicate a job or mask a successful mutation.
             no_retry_methods=(
+                ("nominal.exportjobs.v1.ExportJobService", "CreateExportJob"),
                 ("nominal.file_store.v1.FilesService", "ApplyFileChanges"),
                 ("nominal.skills.v1.SkillsService", "CreateSkill"),
                 ("nominal.skills.v1.SkillsService", "UpdateSkill"),
@@ -334,6 +337,7 @@ class ClientsBunch:
             checklist_execution=client_factory(scout_checklistexecution_api.ChecklistExecutionService),
             checklist=client_factory(scout_checks_api.ChecklistService),
             compute=grpc_factory(compute_pb2_grpc.ComputeServiceStub),
+            export_jobs=grpc_factory(export_jobs_pb2_grpc.ExportJobServiceStub),
             dataexport=client_factory(scout_dataexport_api.DataExportService),
             datasource=client_factory(scout_datasource.DataSourceService),
             ingest_jobs=client_factory(ingest_api.IngestJobService),

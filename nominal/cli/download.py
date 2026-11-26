@@ -27,7 +27,7 @@ from nominal.core import Asset, Channel, Dataset, Event, NominalClient, Run
 from nominal.core._utils.api_types import NominalProperties
 from nominal.core.asset import _get_assets
 from nominal.experimental.logging.rich_log_handler import configure_rich_logging
-from nominal.thirdparty.polars.polars_export_handler import PolarsExportHandler
+from nominal.thirdparty.polars.polars_export_handler import DEFAULT_CHANNELS_PER_REQUEST, PolarsExportHandler
 
 logger = logging.getLogger(__name__)
 
@@ -568,10 +568,9 @@ nominal_data = sortrows( ...
 @click.option(
     "--channels-per-request",
     type=click.IntRange(min=1),
-    default=10,
+    default=DEFAULT_CHANNELS_PER_REQUEST,
     show_default=True,
-    help="Number of channels to request at a time. "
-    "For requesting a small number of channels, setting this value low helps parallelize downloads.",
+    help="Maximum channels per asynchronous export job.",
 )
 @click.option(
     "--points-per-file",
