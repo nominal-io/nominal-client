@@ -57,7 +57,7 @@ core_topic_modules = {
     "assets-and-runs": ("asset", "asset_type", "run", "attachment", "comment"),
     "datasets-and-files": ("dataset", "dataset_file", "video_dataset_file", "filetype", "ingestion_job", "retention"),
     "channels-and-units": ("channel", "unit"),
-    "streaming": ("_stream.write_stream", "log"),
+    "streaming": ("_stream.write_stream", "log", "axes"),
     "containerized-extractors": ("containerized_extractor", "container_image", "secret"),
     "events": ("event", "_event_types"),
     "automatic-validation": ("checklist", "_checklist_types", "streaming_checklist", "data_review", "integration"),

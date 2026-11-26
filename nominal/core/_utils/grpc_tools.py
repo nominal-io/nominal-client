@@ -321,6 +321,12 @@ _GRPC_STATUS_TO_EXCEPTION: dict[grpc.StatusCode, type[NominalError]] = {
 }
 
 
+def grpc_error(code: grpc.StatusCode, details: str | None) -> NominalError:
+    """Map a transport or embedded gRPC status to the corresponding SDK error."""
+    exc_type = _GRPC_STATUS_TO_EXCEPTION.get(code, NominalError)
+    return exc_type(f"{code}: {details}")
+
+
 @contextmanager
 def translate_grpc_errors() -> Iterator[None]:
     """Re-raise any ``grpc.RpcError`` raised in the block as a ``NominalError``.
@@ -334,5 +340,4 @@ def translate_grpc_errors() -> Iterator[None]:
     try:
         yield
     except grpc.RpcError as e:
-        exc_type = _GRPC_STATUS_TO_EXCEPTION.get(e.code(), NominalError)
-        raise exc_type(f"{e.code()}: {e.details()}") from e
+        raise grpc_error(e.code(), e.details()) from e

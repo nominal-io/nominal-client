@@ -22,6 +22,7 @@ from nominal._utils import batched
 from nominal._utils.deprecation_tools import warn_on_deprecated_argument
 from nominal.core import _display
 from nominal.core._clientsbunch import ProtoWriteService
+from nominal.core._points import _write_points
 from nominal.core._stream.batch_processor import process_log_batch
 from nominal.core._stream.factory import create_dataset_stream
 from nominal.core._stream.write_stream import DataStream, LogStream, WriteStream
@@ -37,6 +38,7 @@ from nominal.core._utils.properties import (
     typed_properties_to_conjure,
 )
 from nominal.core._utils.query_tools import create_search_dataset_files_query
+from nominal.core.axes import TimeAxes, TimeFrequencyAxes
 from nominal.core.bounds import Bounds
 from nominal.core.channel import BatchAddChannelsResult, Channel, ChannelDataType, CreateChannelRequest
 from nominal.core.containerized_extractor import ContainerizedExtractor, _get_containerized_extractor
@@ -57,6 +59,8 @@ from nominal.core.video_dataset_file import VideoDatasetFile
 from nominal.exceptions import NominalIngestError, NominalVideoTimestampModeError
 from nominal.protos.authentication.users.v1 import users_pb2_grpc
 from nominal.protos.authorization.roles.v1 import roles_pb2_grpc
+from nominal.protos.channel_writer.v2 import nominal_channel_writer_pb2 as writer_pb2
+from nominal.protos.channel_writer.v2 import nominal_channel_writer_pb2_grpc
 from nominal.protos.channelmetadata.v1 import channel_metadata_pb2
 from nominal.protos.seriesmetadata.v1 import series_metadata_pb2, series_metadata_pb2_grpc
 from nominal.protos.storage.v1 import dataset_retention_pb2, dataset_retention_pb2_grpc
@@ -113,6 +117,8 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
         def storage_writer(self) -> storage_writer_api.NominalChannelWriterService: ...
         @property
         def proto_write(self) -> ProtoWriteService: ...
+        @property
+        def channel_writer(self) -> nominal_channel_writer_pb2_grpc.NominalChannelWriterServiceStub: ...
         @property
         def series_metadata(self) -> series_metadata_pb2_grpc.SeriesMetadataServiceStub: ...
         # Used by the experimental dataset-owner helpers.
@@ -1570,6 +1576,60 @@ class Dataset(HasRid, MarkableMixin, RefreshableConjureMixin[scout_catalog.Enric
                 batch, self.rid, auth_header=self._clients.auth_header, storage_writer=self._clients.storage_writer
             ),
         )
+
+    def write_points(
+        self,
+        channel_name: str,
+        *,
+        axes: TimeAxes | TimeFrequencyAxes,
+        values: Sequence[float],
+        unit: str | None = None,
+        tags: Mapping[str, str] | None = None,
+    ) -> None:
+        """Submit one batch of double-valued points with explicit coordinates.
+
+        Requires a deployment that supports the supplied coordinate domain.
+        Coordinates and values are paired by index; input order is preserved.
+        The coordinate domain must match any existing channel.
+        Each call sends one batch. The service rejects batches above 50,000 points.
+
+        Args:
+            channel_name: Channel to receive the values.
+            axes: Coordinates for each value, with timestamps in integral UTC epoch nanoseconds.
+            values: Float64 measurements, one per coordinate, sent without unit conversion.
+            unit: Unit metadata for the channel. A supplied unit can update existing channel metadata
+                asynchronously. ``None`` omits it; an empty string is sent explicitly.
+            tags: Tags shared by all points in this call.
+
+        Returns:
+            None after the batch is accepted.
+            Storage completes asynchronously.
+
+        Raises:
+            TypeError: A timestamp is boolean or is not integral.
+            ValueError: Coordinate and value columns have unequal lengths, or a timestamp
+                cannot fit the wire format's seconds field.
+            nominal.exceptions.NominalError: The service rejects the write, the response
+                is invalid, or the operation fails before acceptance.
+
+        Note:
+            Failed writes are not automatically replayed. A lost response can leave
+            acceptance unknown; repeating the call can duplicate accepted data.
+        """
+        if len(axes.timestamps) != len(values):
+            raise ValueError("coordinates and values must have equal lengths")
+        points = writer_pb2.PointData(
+            axes=axes._to_proto(), values=writer_pb2.Values(doubles=writer_pb2.Doubles(values=values))
+        )
+        schema = writer_pb2.Schema(
+            schema_id=1,
+            dataset_rid=self.rid,
+            channel=channel_name,
+            type=writer_pb2.CHANNEL_TYPE_DOUBLE,
+            unit=unit,
+            tags=None if tags is None else dict(tags),
+        )
+        _write_points(self._clients.channel_writer, schema, points)
 
     def write_logs(self, logs: Iterable[LogPoint], channel_name: str = "logs", batch_size: int = 1000) -> None:
         r"""Stream logs to the datasource.

@@ -14,6 +14,7 @@ from nominal.core.asset_type import (
     SeriesType,
 )
 from nominal.core.attachment import Attachment
+from nominal.core.axes import TimeAxes, TimeFrequencyAxes
 from nominal.core.bounds import Bounds
 from nominal.core.channel import (
     BatchAddChannelsResult,
@@ -161,6 +162,8 @@ __all__ = [
     "Symbol",
     "SymbolKind",
     "TeamsIntegrationDetails",
+    "TimeAxes",
+    "TimeFrequencyAxes",
     "TimestampMetadata",
     "Unit",
     "UnitLike",
