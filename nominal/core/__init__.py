@@ -7,8 +7,10 @@ from nominal.core._utils.api_types import NominalProperties
 from nominal.core._utils.networking import HeaderProvider
 from nominal.core._utils.query_tools import ArchiveStatusFilter
 from nominal.core.asset import Asset
+from nominal.core.asset_links import ResolvedAssetLink, UnresolvedAssetLink
 from nominal.core.asset_type import (
     AssetType,
+    AssetTypeLink,
     AssetTypeProperty,
     AssetTypePropertyValueType,
     SeriesType,
@@ -91,6 +93,7 @@ __all__ = [
     "as_files_ingested",
     "Asset",
     "AssetType",
+    "AssetTypeLink",
     "AssetTypeProperty",
     "AssetTypePropertyValueType",
     "Attachment",
@@ -144,6 +147,7 @@ __all__ = [
     "Priority",
     "RetentionExemption",
     "RetentionPolicy",
+    "ResolvedAssetLink",
     "Run",
     "SearchEventOriginType",
     "Secret",
@@ -162,6 +166,7 @@ __all__ = [
     "SymbolKind",
     "TeamsIntegrationDetails",
     "TimestampMetadata",
+    "UnresolvedAssetLink",
     "Unit",
     "UnitLike",
     "UnknownIntegrationDetails",

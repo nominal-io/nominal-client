@@ -1,3 +1,4 @@
+from dataclasses import replace
 from unittest.mock import MagicMock
 
 import grpc
@@ -5,6 +6,7 @@ import pytest
 
 from nominal.core import AssetType, AssetTypeProperty, AssetTypePropertyValueType, NominalClient, SeriesType
 from nominal.core._utils.query_tools import ArchiveStatusFilter
+from nominal.core.asset_type import AssetTypeLink
 from nominal.exceptions import NominalFailedPreconditionError, NominalNotFoundError
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.types import types_pb2
@@ -160,6 +162,44 @@ def test_series_requirement_replacement_distinguishes_never_set_and_cleared() ->
     assert kind.required_series == {}
 
 
+def test_link_definitions_keep_identity_when_relabelled_and_clear_independently() -> None:
+    """The source owns each link, including when the target sees it as incoming."""
+    clients = MagicMock()
+    client = NominalClient(_clients=clients)
+    clients.resolve_default_workspace_rid.return_value = "workspace"
+    new_link = AssetTypeLink(target_type_rid="engine", source_property="engine_serial", inverse_label="Vehicles")
+    raw = asset_pb2.LinkDefinition(
+        target_type_rid="engine", direct=asset_pb2.DirectLink(source_property="engine_serial"), inverse_label="Vehicles"
+    )
+    persisted = asset_pb2.LinkDefinition(rid="link", source_type_rid="vehicle")
+    persisted.MergeFrom(raw)
+    clients.assets.CreateType.return_value = asset_pb2.CreateTypeResponse(
+        type=asset_pb2.Type(rid="vehicle", outgoing_links=[persisted])
+    )
+    source = client.create_asset_type(
+        "Vehicle", primary_key="id", properties={"engine_serial": AssetTypeProperty()}, outgoing_links=[new_link]
+    )
+    assert list(clients.assets.CreateType.call_args.args[0].links) == [raw]
+    target = AssetType._from_proto(clients, asset_pb2.Type(rid="engine", incoming_links=[persisted]))
+    assert source.outgoing_links == target.incoming_links == (replace(new_link, rid="link", source_type_rid="vehicle"),)
+    persisted.forward_label = "Engine"
+    clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(
+        type=asset_pb2.Type(rid="vehicle", outgoing_links=[persisted])
+    )
+    source.update(outgoing_links=[replace(source.outgoing_links[0], forward_label="Engine")])
+    changed = clients.assets.UpdateType.call_args.args[0].links.links[0]
+    assert changed.rid == "link"
+    assert changed.forward_label == "Engine"
+    assert not changed.HasField("source_type_rid")
+    assert source.outgoing_links[0].forward_label == "Engine"
+    clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(type=asset_pb2.Type(rid="vehicle"))
+    source.update(outgoing_links=[])
+    assert source.outgoing_links == ()
+    assert clients.assets.UpdateType.call_args.args[0].HasField("links")
+    source.update(name="Car")
+    assert not clients.assets.UpdateType.call_args.args[0].HasField("links")
+
+
 @pytest.mark.parametrize(
     "raw",
     [
@@ -169,6 +209,7 @@ def test_series_requirement_replacement_distinguishes_never_set_and_cleared() ->
                 series=asset_pb2.SeriesRequirements(series=[asset_pb2.SeriesRequirement(name="speed", type=99)])
             )
         ),
+        asset_pb2.Type(outgoing_links=[asset_pb2.LinkDefinition(rid="future")]),
     ],
 )
 def test_unknown_definition_cannot_be_accidentally_cleared(raw) -> None:
@@ -205,8 +246,8 @@ def test_unsupported_update_response_leaves_previous_snapshot_intact() -> None:
     clients = MagicMock()
     kind = AssetType._from_proto(clients, asset_pb2.Type(rid="type-rid", name="Before"))
     clients.assets.UpdateType.return_value = asset_pb2.UpdateTypeResponse(
-        type=asset_pb2.Type(rid=kind.rid, name="After", data_requirements=asset_pb2.DataRequirements())
+        type=asset_pb2.Type(rid=kind.rid, name="After", incoming_links=[asset_pb2.LinkDefinition(rid="future")])
     )
-    with pytest.raises(ValueError, match="^Unknown data requirements for asset type 'type-rid'$"):
+    with pytest.raises(ValueError, match="^Unknown asset-type link kind for link 'future'$"):
         kind.update(name="After")
     assert kind.name == "Before"
