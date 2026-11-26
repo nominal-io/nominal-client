@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Protocol, Self, TypeVar
+from typing import TYPE_CHECKING, Protocol, Self, TypeVar
 
 from conjure_python_client import Service, ServiceConfiguration
 from nominal_api import (
@@ -122,6 +122,10 @@ class ProtoWriteService(Service):
         )
 
 
+if TYPE_CHECKING:
+    from nominal.experimental.analyst._transport import _AutomationTransport
+
+
 @dataclass(frozen=True)
 class ClientsBunch:
     auth_header: str
@@ -139,6 +143,21 @@ class ClientsBunch:
         repr=False,
         compare=False,
     )
+
+    _analyst_transport: LazyField[_AutomationTransport] = field(
+        default_factory=LazyField, init=False, repr=False, compare=False
+    )
+
+    @property
+    def analyst_automations(self) -> _AutomationTransport:
+        # Defer the experimental import to avoid a core/experimental package initialization cycle.
+        from nominal.experimental.analyst._transport import _AutomationTransport
+
+        return self._analyst_transport.get_or_init(
+            lambda: _AutomationTransport(
+                self._api_base_url, self.auth_header, self._service_config, self._user_agent, self.header_provider
+            )
+        )
 
     # Conjure services
     catalog: scout_catalog.CatalogService

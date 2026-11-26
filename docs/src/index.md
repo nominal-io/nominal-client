@@ -111,6 +111,7 @@ Asset types <guides/assets/asset-types>
 Workbooks <guides/workbooks>
 Events <guides/events>
 Analyst skills <guides/skills>
+Analyst automations <guides/analyst-automations>
 ```
 
 ```{toctree}
