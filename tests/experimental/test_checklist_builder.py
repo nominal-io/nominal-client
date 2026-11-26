@@ -328,6 +328,7 @@ def test_commit_replaces_definition_and_refreshes_in_place(client: NominalClient
     assert updated.rid == checklist.rid
     assert updated.commit_id == "new-commit"
     assert checklist.commit_id == "new-commit"
+    assert checklist.commit_message == "Raise limit"
     assert updated.properties == {"source": "server"}
     assert updated.labels == ["server-label"]
     mock_clients.run.GetRun.return_value = run_service_pb2.GetRunResponse(

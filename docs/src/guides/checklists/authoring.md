@@ -55,6 +55,8 @@ builder.commit(checklist, commit_message="Raise overheating limit")
 `commit` replaces every check and variable, including changes made in the UI, and creates a new version.
 It fails if someone published a change after `get_checklist`. Review that change, then load the checklist again.
 
+After a commit, `checklist.commit_id` and `checklist.commit_message` hold the ID and the message of the new version.
+
 Keep the checks in source control and the checklist RID in configuration.
 Copy any UI edits back to source before you deploy, because nothing merges them.
 

@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 from nominal_api import scout_checklistexecution_api as api
-from nominal_api import scout_integrations_api, scout_run_api
+from nominal_api import scout_checks_api, scout_integrations_api, scout_run_api, scout_versioning_api
 
-from nominal.core import Asset, Checklist, Integration
+from nominal.core import Asset, Checklist, Integration, NominalClient
 from nominal.core import streaming_checklist as streaming
 from nominal.protos.asset.v2 import asset_pb2
 from nominal.protos.integrations.v1 import integrations_pb2
@@ -15,6 +15,34 @@ from nominal.protos.integrations.v1 import integrations_pb2
 @pytest.fixture
 def checklist():
     return Checklist(rid="checklist", name="Monitor", description="", properties={}, labels=[], _clients=MagicMock())
+
+
+def _versioned_checklist(message: str, commit_id: str = "commit") -> scout_checks_api.VersionedChecklist:
+    return scout_checks_api.VersionedChecklist(
+        rid="checklist",
+        checklist_variables=[],
+        checks=[],
+        metadata=scout_checks_api.ChecklistMetadata(
+            asset_type_rids=[],
+            title="Monitor",
+            description="",
+            author_rid="author",
+            assignee_rid="assignee",
+            created_at="2026-01-01T00:00:00Z",
+            is_archived=False,
+            is_published=True,
+            labels=[],
+            properties={},
+        ),
+        commit=scout_versioning_api.Commit(
+            id=commit_id,
+            committed_at="2026-01-01T00:00:00Z",
+            committed_by="author",
+            is_working_state=False,
+            message=message,
+            resource_rid="checklist",
+        ),
+    )
 
 
 def test_notification_configuration_preserves_options(checklist):
@@ -251,3 +279,24 @@ def test_omitted_notification_destinations_do_not_warn(checklist, kwargs):
         checklist.execute_streaming(["asset"], **kwargs)
     request = checklist._clients.checklist_execution.execute_streaming_checklist.call_args.args[1]
     assert request.notification_configurations == []
+
+
+def test_get_checklist_keeps_the_commit_message_verbatim(mock_clients):
+    """A loaded checklist exposes its version's message unchanged, including line breaks."""
+    message = "Raise overheating limit\n\nsource: 4f2a9c1"
+    mock_clients.checklist.get.return_value = _versioned_checklist(message)
+
+    loaded = NominalClient(mock_clients).get_checklist("checklist")
+
+    assert loaded.commit_message == message
+
+
+def test_checklist_refresh_replaces_the_commit_message_in_place(mock_clients):
+    """After someone else commits, refresh loads the new version's ID and message into the same instance."""
+    loaded = Checklist._from_conjure(mock_clients, _versioned_checklist("Initial checks", "first"))
+    mock_clients.checklist.get.return_value = _versioned_checklist("Raise limit", "second")
+
+    refreshed = loaded.refresh()
+
+    assert refreshed is loaded
+    assert (loaded.commit_id, loaded.commit_message) == ("second", "Raise limit")

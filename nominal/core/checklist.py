@@ -48,6 +48,9 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
     asset_type_rids: Sequence[str] = ()
     """RIDs of the asset types associated with this checklist."""
 
+    commit_message: str | None = None
+    """Message written when the loaded version was committed. None for unloaded manual instances."""
+
     class _Clients(DataReview._Clients, Protocol):
         @property
         def checklist(self) -> scout_checks_api.ChecklistService: ...
@@ -76,6 +79,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
             author_rid=checklist.metadata.author_rid,
             commit_id=checklist.commit.id,
             asset_type_rids=tuple(checklist.metadata.asset_type_rids),
+            commit_message=checklist.commit.message,
         )
 
     @_display.card
@@ -88,6 +92,7 @@ class Checklist(HasRid, RefreshableConjureMixin[scout_checks_api.VersionedCheckl
                 ("RID", _display.identifier(self.rid)),
                 ("Description", _display.escape(self.description) if self.description else None),
                 ("Commit", _display.identifier(self.commit_id) if self.commit_id else None),
+                ("Commit message", _display.multiline(self.commit_message) if self.commit_message else None),
                 ("Labels", _display.labels(self.labels) if self.labels else None),
             ],
             properties=self.properties,
