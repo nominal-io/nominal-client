@@ -52,6 +52,122 @@ jobs:
         run: |
           just test
 
+  # Writes the test coverage to the run's summary page. It only reports: there is no minimum.
+  coverage:
+    runs-on: depot-ubuntu-24.04
+    outputs:
+      comment: ${{ steps.summary.outputs.comment }}
+    steps:
+      # fetch-depth: 2 required — the coverage steps compare HEAD with its first parent
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 2
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.13.x"
+          enable-cache: false
+          cache-dependency-glob: "uv.lock"
+          python-version: "3.13"
+      - name: Install just
+        uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3.1.0
+      - name: Install dependencies
+        run: |
+          just install
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Run unit tests
+        run: |
+          just test
+      - name: Measure coverage of the base branch
+        if: github.event_name == 'pull_request'
+        run: |
+          # HEAD is the pull request's merge commit, so its first parent is the base branch.
+          git worktree add --detach "$RUNNER_TEMP/base" HEAD^1
+          cd "$RUNNER_TEMP/base"
+          if just install && just test; then
+            uv run coverage json --quiet -o "$RUNNER_TEMP/coverage-base.json"
+          else
+            echo "::warning::The base branch could not be measured, so the coverage summary has no comparison."
+          fi
+      - name: Summarize test coverage
+        id: summary
+        run: |
+          uv run coverage json --quiet -o "$RUNNER_TEMP/coverage.json"
+          args=("$RUNNER_TEMP/coverage.json")
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            # quotePath=false keeps non-ASCII paths as they are, and -M pairs a renamed file with its old path.
+            git -c core.quotePath=false diff --name-status -M --diff-filter=d HEAD^1 HEAD -- 'nominal/*.py' \
+              > "$RUNNER_TEMP/changed.txt"
+            args+=(--changed "$RUNNER_TEMP/changed.txt")
+          fi
+          if [ -f "$RUNNER_TEMP/coverage-base.json" ]; then
+            args+=(--base "$RUNNER_TEMP/coverage-base.json")
+          fi
+          uv run python .github/scripts/coverage_summary.py "${args[@]}" --comment "$RUNNER_TEMP/comment.md" \
+            >> "$GITHUB_STEP_SUMMARY"
+          # The script writes the comment file only when the summary lists a changed file. The comment job
+          # posts it. A random delimiter means no line of the text can end the output.
+          if [ -f "$RUNNER_TEMP/comment.md" ]; then
+            delimiter="$(openssl rand -hex 16)"
+            {
+              echo "comment<<$delimiter"
+              cat "$RUNNER_TEMP/comment.md"
+              echo "$delimiter"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+  # Posts the coverage summary as one comment on the pull request when it lists a changed file, and updates
+  # that comment on later runs. When a later run lists no file, it removes the comment. When the coverage job
+  # fails, this job is skipped, and the comment keeps the numbers of an earlier commit.
+  # This job can write to pull requests, so it runs no code of the pull request: it only posts the text.
+  coverage-comment:
+    needs: coverage
+    # A pull request from a fork gets a read-only token, so there only the summary page has the coverage.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: depot-ubuntu-24.04-small
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Post or update the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Store in an environment to guard against script injection
+          COMMENT: ${{ needs.coverage.outputs.comment }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          marker="<!-- coverage-summary -->"
+          pull="repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER"
+          comments="repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments"
+          mine=".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id"
+          # A lookup that fails must not look like "no comment yet", or the step would post a second comment.
+          if ! current=$(gh api "$pull" --jq .head.sha) || ! found=$(gh api "$comments" --paginate --jq "$mine"); then
+            echo "::warning::The coverage comment could not be looked up."
+            exit 0
+          fi
+          # A run for an older commit can finish last. It must not replace the comment of a newer run.
+          if [ "$current" != "$HEAD_SHA" ]; then
+            echo "The pull request has a newer commit, so this run leaves the comment as it is."
+            exit 0
+          fi
+          id=${found%%$'\n'*}
+          earlier="repos/$GITHUB_REPOSITORY/issues/comments/$id"
+          body="$marker"$'\n'"$COMMENT"
+          if [ -z "$COMMENT" ] && [ -z "$id" ]; then
+            exit 0
+          elif [ -z "$COMMENT" ]; then
+            # The summary lists no changed file any more, so the comment of an earlier run is out of date.
+            request=(--method DELETE "$earlier")
+          elif [ -n "$id" ]; then
+            request=(--method PATCH "$earlier" -f body="$body")
+          else
+            request=(--method POST "$comments" -f body="$body")
+          fi
+          # The summary page always has the text, so a failure here must not fail the job.
+          gh api "${request[@]}" > /dev/null || echo "::warning::The coverage comment could not be updated."
+
   build-packages:
     runs-on: depot-ubuntu-24.04-small
     steps:
