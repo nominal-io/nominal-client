@@ -119,7 +119,8 @@ jobs:
           fi
 
   # Posts the coverage summary as one comment on the pull request when it lists a changed file, and updates
-  # that comment on later runs. When a later run lists no file, it removes the comment.
+  # that comment on later runs. When a later run lists no file, it removes the comment. When the coverage job
+  # fails, this job is skipped, and the comment keeps the numbers of an earlier commit.
   # This job can write to pull requests, so it runs no code of the pull request: it only posts the text.
   coverage-comment:
     needs: coverage
@@ -135,11 +136,23 @@ jobs:
           # Store in an environment to guard against script injection
           COMMENT: ${{ needs.coverage.outputs.comment }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           marker="<!-- coverage-summary -->"
+          pull="repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER"
           comments="repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments"
           mine=".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id"
-          id=$(gh api "$comments" --paginate --jq "$mine" | head -n 1)
+          # A lookup that fails must not look like "no comment yet", or the step would post a second comment.
+          if ! current=$(gh api "$pull" --jq .head.sha) || ! found=$(gh api "$comments" --paginate --jq "$mine"); then
+            echo "::warning::The coverage comment could not be looked up."
+            exit 0
+          fi
+          # A run for an older commit can finish last. It must not replace the comment of a newer run.
+          if [ "$current" != "$HEAD_SHA" ]; then
+            echo "The pull request has a newer commit, so this run leaves the comment as it is."
+            exit 0
+          fi
+          id=${found%%$'\n'*}
           earlier="repos/$GITHUB_REPOSITORY/issues/comments/$id"
           body="$marker"$'\n'"$COMMENT"
           if [ -z "$COMMENT" ] && [ -z "$id" ]; then
